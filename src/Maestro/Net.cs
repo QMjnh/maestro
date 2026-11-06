@@ -25,9 +25,18 @@ static class Net
         Timeout = TimeSpan.FromSeconds(15),
     };
 
-    public static async Task<string> GetText(string url, IDictionary<string, string>? headers = null)
+    public static Task<string> GetText(string url, IDictionary<string, string>? headers = null) =>
+        Send(new HttpRequestMessage(HttpMethod.Get, url), headers);
+
+    public static async Task<JsonNode> PostJson(string url, JsonNode body, IDictionary<string, string>? headers = null)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json") };
+        return JsonNode.Parse(await Send(req, headers)) ?? throw new UpstreamException("Empty response from " + new Uri(url).Host);
+    }
+
+    static async Task<string> Send(HttpRequestMessage req, IDictionary<string, string>? headers)
+    {
+        using var _ = req;
         req.Headers.TryAddWithoutValidation("User-Agent", UA);
         req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
         if (headers != null)

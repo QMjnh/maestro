@@ -96,6 +96,29 @@ static partial class YouTube
         return await VideosApi(ids, apiKey);
     }
 
+    // ---- recommendations ------------------------------------------------------
+
+    /// <summary>The YouTube "Mix" for a video (what YouTube autoplays after it), without the video itself.</summary>
+    public static async Task<List<Track>> Mix(string id)
+    {
+        var body = new JsonObject
+        {
+            ["context"] = new JsonObject { ["client"] = new JsonObject { ["clientName"] = "WEB", ["clientVersion"] = "2.20251101.00.00", ["hl"] = "en", ["gl"] = "US" } },
+            ["videoId"] = id,
+            ["playlistId"] = "RD" + id,
+        };
+        var data = await Net.PostJson("https://www.youtube.com/youtubei/v1/next?prettyPrint=false", body, ConsentCookie);
+        return Net.FindAll(data.At("contents.twoColumnWatchNextResults.playlist"), "playlistPanelVideoRenderer")
+            .Where(v => v.Str("videoId") is { } vid && vid != id && v["lengthText"] != null)
+            .Select(v =>
+            {
+                var vid = v.Str("videoId")!;
+                return new Track("youtube", vid, v.Str("title.simpleText") ?? "", Clean(v.Str("shortBylineText.runs.0.text") ?? ""),
+                    Thumb(vid), Net.ClockToMs(v.Str("lengthText.simpleText")));
+            })
+            .ToList();
+    }
+
     // ---- link resolution ------------------------------------------------------
 
     public static async Task<Track> Video(string id, string apiKey)

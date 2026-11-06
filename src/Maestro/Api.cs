@@ -11,6 +11,8 @@ sealed class Api(SpotifyApp spotify)
 {
     sealed class BadRequest(string message) : Exception(message);
 
+    readonly Radio radio = new(spotify);
+
     public async Task<(int Status, string Json)> Handle(string method, Uri url, string body)
     {
         try
@@ -57,6 +59,16 @@ sealed class Api(SpotifyApp spotify)
                 }
                 if (query["source"] == "youtube") return new { items = await YouTube.Search(q, settings.YoutubeApiKey) };
                 throw new BadRequest("source must be spotify or youtube");
+            }
+
+            // Recommendations to keep playing after the queue runs out.
+            case ("GET", "/api/radio"):
+            {
+                var source = query["source"];
+                var id = query["id"] ?? "";
+                if (source is not ("spotify" or "youtube") || id.Length == 0) throw new BadRequest("source and id are required");
+                var items = await radio.For(source, id, query["title"] ?? "", query["artist"] ?? "", query["mix"] == "both", settings);
+                return new { items };
             }
 
             // Turn a pasted link into playable items.
