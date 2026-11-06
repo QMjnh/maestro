@@ -18,9 +18,9 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
@@ -39,4 +39,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = '${{ github.event.inputs.tag || github.ref_name }}'
-          gh release create $tag out/Maestro-win-x64.exe --target '${{ github.sha }}' --title "Maestro $tag" --generate-notes
+          # Creating a release on GitHub's Releases page also pushes its tag (which runs this): then just attach the exe.
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag out/Maestro-win-x64.exe --clobber
+          } else {
+            gh release create $tag out/Maestro-win-x64.exe --target '${{ github.sha }}' --title "Maestro $tag" --generate-notes
+          }
