@@ -3,8 +3,8 @@ using System.Text.Json.Nodes;
 
 namespace Maestro;
 
-/// <summary>A playable song from either source — the shape the UI works with.</summary>
-record Track(string Source, string Id, string Title, string Artist, string Art, long? Duration);
+/// <summary>A playable song from any source — the shape the UI works with.</summary>
+record Track(string Source, string Id, string Title, string Artist, string Art, long? Duration, string? Url = null);
 
 record Playlist(string Id, string Name, List<Track> Items, long UpdatedAt, long CreatedAt);
 
@@ -125,12 +125,12 @@ static class Store
     static Track? CleanTrack(JsonNode? n)
     {
         if (n.Str("id") is not { Length: > 0 } id) return null;
-        return new Track(
-            n.Str("source") == "spotify" ? "spotify" : "youtube",
-            id,
-            n.Str("title") ?? "",
-            n.Str("artist") ?? "",
-            n.Str("art") ?? "",
-            n.Num("duration"));
+        var source = n.Str("source") switch
+        {
+            "spotify" => "spotify",
+            "soundcloud" => "soundcloud",
+            _ => "youtube",
+        };
+        return new Track(source, id, n.Str("title") ?? "", n.Str("artist") ?? "", n.Str("art") ?? "", n.Num("duration"), n.Str("url"));
     }
 }

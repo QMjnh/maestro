@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Installs Maestro (one player for Spotify and YouTube) for the current user. No admin needed.
+  Installs Maestro (one player for Spotify, YouTube, and SoundCloud) for the current user. No admin needed.
 
 .EXAMPLE
   irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
@@ -149,7 +149,7 @@ function Install-Maestro {
         $lnk.TargetPath = $exe
         $lnk.WorkingDirectory = $InstallDir
         $lnk.IconLocation = "$exe,0"
-        $lnk.Description = 'One player for Spotify and YouTube'
+        $lnk.Description = 'One player for Spotify, YouTube, and SoundCloud'
         $lnk.Save()
     }
     New-Item $AppPathKey -Force | Out-Null
@@ -188,7 +188,7 @@ function Install-Maestro {
     }
     if (-not (Test-Path "$env:APPDATA\Spotify\Spotify.exe")) {
         Write-Warning ('Spotify desktop app not found. Install it from https://www.spotify.com/download (or SpotX) to play Spotify songs; ' +
-                       'YouTube works without it. The Microsoft Store version of Spotify is not supported.')
+                       'YouTube and SoundCloud work without it. The Microsoft Store version of Spotify is not supported.')
     }
 
     Write-Host ''

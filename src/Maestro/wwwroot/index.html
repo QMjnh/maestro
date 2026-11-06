@@ -66,7 +66,7 @@
         <div class="pl-right">
           <span class="source-chip" id="sourceChip"></span>
           <button class="icon-btn" id="btnMute" title="Mute"><span data-icon="volume"></span></button>
-          <div class="bar volume" id="volume" title="Volume (YouTube and Spotify)"><div class="bar-fill" id="volumeFill"></div></div>
+          <div class="bar volume" id="volume" title="Volume"><div class="bar-fill" id="volumeFill"></div></div>
         </div>
       </footer>
     </div>
@@ -108,6 +108,14 @@
           <label>API key <span class="opt">(optional)</span> <input name="youtubeApiKey" type="password" autocomplete="off" /></label>
         </section>
 
+        <section>
+          <h3><span class="dot soundcloud"></span>SoundCloud</h3>
+          <p class="hint">
+            Public tracks play inside Maestro. No account or API key needed. SoundCloud Go+ exclusives and
+            tracks that block embedding may not play.
+          </p>
+        </section>
+
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
           <button value="save" class="btn primary">Save</button>
@@ -137,6 +145,7 @@
       </form>
     </dialog>
 
+    <iframe id="scPlayer" allow="autoplay" title="SoundCloud"></iframe>
     <div class="menu" id="menu" hidden></div>
     <div class="toasts" id="toasts"></div>
 

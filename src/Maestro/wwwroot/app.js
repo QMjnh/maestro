@@ -1,5 +1,5 @@
 'use strict';
-/* Maestro — one queue, two engines (YouTube iframe + Spotify desktop). */
+/* Maestro — one queue, three engines (YouTube iframe + Spotify desktop + SoundCloud widget). */
 
 // ===========================================================================
 // Utilities
@@ -47,7 +47,10 @@ function toast(msg, { error = false, ms = 3500 } = {}) {
 }
 
 function looksLikeUrl(s) {
-  return /^(https?:\/\/|spotify:)/i.test(s.trim()) || /^(www\.|open\.spotify\.com|youtu\.be|(m\.|music\.)?youtube\.com)/i.test(s.trim());
+  return (
+    /^(https?:\/\/|spotify:)/i.test(s.trim()) ||
+    /^(www\.|open\.spotify\.com|youtu\.be|(m\.|music\.)?youtube\.com|(on\.)?soundcloud\.com|m\.soundcloud\.com)/i.test(s.trim())
+  );
 }
 
 // Same loose comparison the server uses to tell whether Spotify is on "our" track.
@@ -95,6 +98,7 @@ const ICONS = {
     '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.6 14.4a.6.6 0 0 1-.9.2c-2.4-1.4-5.3-1.8-8.8-1a.6.6 0 1 1-.3-1.2c3.8-.9 7-.5 9.7 1.1.3.2.4.6.3.9zm1.2-2.7a.8.8 0 0 1-1 .3c-2.7-1.7-6.9-2.2-10.1-1.2a.8.8 0 1 1-.5-1.5c3.7-1.1 8.3-.6 11.4 1.4.4.2.5.7.2 1zm.1-2.8C14.7 9 9.4 8.8 6.3 9.7a.9.9 0 1 1-.5-1.8c3.5-1.1 9.4-.9 13.1 1.3a.9.9 0 0 1-1 1.6z"/>',
   youtube:
     '<path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2C2 8.8 2 12 2 12s0 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15V9l5.2 3z"/>',
+  soundcloud: '<path d="M6 17h12.5a3.5 3.5 0 0 0 .4-7 6 6 0 0 0-11.5-1.6A4.5 4.5 0 0 0 6 17z"/>',
   trash: '<path d="M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7z"/>',
   info: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/>',
 };
@@ -108,8 +112,23 @@ function hydrateIcons(root = document) {
 function setIcon(btn, name) {
   btn.querySelector('[data-icon]').innerHTML = icon(name);
 }
+const SOURCE_LABEL = { spotify: 'Spotify', youtube: 'YouTube', soundcloud: 'SoundCloud' };
+const ALL_SOURCES = ['spotify', 'youtube', 'soundcloud'];
+function sourceLabel(source) {
+  return SOURCE_LABEL[source] || source;
+}
 function sourceBadge(source) {
-  return `<span class="badge ${source}">${icon(source, 12)}${source === 'spotify' ? 'Spotify' : 'YouTube'}</span>`;
+  return `<span class="badge ${source}">${icon(source, 12)}${sourceLabel(source)}</span>`;
+}
+function sourceSummary(items) {
+  const n = { spotify: 0, youtube: 0, soundcloud: 0 };
+  for (const i of items) if (i.source in n) n[i.source]++;
+  return `${n.spotify} Spotify / ${n.youtube} YouTube / ${n.soundcloud} SoundCloud`;
+}
+function itemLink(item) {
+  if (item.source === 'spotify') return `https://open.spotify.com/track/${item.id}`;
+  if (item.source === 'soundcloud') return item.url || `https://soundcloud.com/search/sounds?q=${encodeURIComponent(item.title)}`;
+  return `https://www.youtube.com/watch?v=${item.id}`;
 }
 
 // ===========================================================================
@@ -122,7 +141,7 @@ const saved = JSON.parse(localStorage.getItem('maestro.state') || localStorage.g
 const state = {
   view: { name: 'search' },
   playlists: [],
-  search: { q: '', filter: 'all', results: { spotify: null, youtube: null }, resolved: null, busy: false },
+  search: { q: '', filter: 'all', results: { spotify: null, youtube: null, soundcloud: null }, resolved: null, busy: false },
   status: null,
 };
 
@@ -136,7 +155,7 @@ const P = {
   unshuffled: Array.isArray(saved.unshuffled) ? saved.unshuffled : null,
   autoplay: ['off', 'same', 'both'].includes(saved.autoplay) ? saved.autoplay : 'same', // keep going with recommendations
 
-  engine: null, // 'youtube' | 'spotify' | null — what is currently loaded
+  engine: null, // 'youtube' | 'spotify' | 'soundcloud' | null — what is currently loaded
   loaded: false, // has the current item actually been started this session?
   playing: false,
   loading: false,
@@ -171,6 +190,7 @@ const toEntry = (item, auto = false) => ({
   artist: item.artist,
   art: item.art,
   duration: item.duration ?? null,
+  ...(item.url ? { url: item.url } : {}),
   ...(auto ? { auto: true } : {}), // added by autoplay, not by you
 });
 
@@ -349,6 +369,121 @@ async function spotifyPoll(token) {
 }
 
 // ===========================================================================
+// SoundCloud engine (official widget iframe, audio only)
+// ===========================================================================
+
+let sc = null;
+let scApi = null;
+let scBound = false;
+
+function loadSoundCloud() {
+  scApi = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://w.soundcloud.com/player/api.js';
+    s.onload = () => resolve();
+    s.onerror = () => {
+      toast('Could not load the SoundCloud player — are you offline?', { error: true, ms: 6000 });
+      reject(new Error('SoundCloud player failed to load'));
+    };
+    document.head.append(s);
+  });
+}
+
+function widgetUrl(id, autoplay) {
+  const u = new URL('https://w.soundcloud.com/player/');
+  u.searchParams.set('url', 'https://api.soundcloud.com/tracks/' + id);
+  u.searchParams.set('auto_play', autoplay ? 'true' : 'false');
+  u.searchParams.set('hide_related', 'true');
+  u.searchParams.set('show_comments', 'false');
+  u.searchParams.set('visual', 'false');
+  u.searchParams.set('single_active', 'false');
+  return u.href;
+}
+
+function bindSoundCloudEvents() {
+  if (scBound) return;
+  scBound = true;
+  sc.bind(SC.Widget.Events.PLAY, () => {
+    if (P.engine !== 'soundcloud') return;
+    P.playing = true;
+    P.loading = false;
+    sc.getDuration((d) => {
+      if (P.engine !== 'soundcloud') return;
+      P.duration = d || P.duration;
+      const item = current();
+      if (item && !item.duration && P.duration) item.duration = Math.round(P.duration);
+      renderPlayer();
+    });
+    renderPlayer();
+  });
+  sc.bind(SC.Widget.Events.PAUSE, () => {
+    if (P.engine !== 'soundcloud') return;
+    P.playing = false;
+    renderPlayer();
+  });
+  sc.bind(SC.Widget.Events.FINISH, () => {
+    if (P.engine !== 'soundcloud') return;
+    P.playing = false;
+    onTrackEnded();
+  });
+  sc.bind(SC.Widget.Events.PLAY_PROGRESS, (e) => {
+    if (P.engine !== 'soundcloud') return;
+    P.position = e.currentPosition || 0;
+  });
+  if (SC.Widget.Events.ERROR) {
+    sc.bind(SC.Widget.Events.ERROR, () => {
+      if (P.engine !== 'soundcloud') return;
+      const item = current();
+      toast(`Can't play “${item?.title || 'track'}” on SoundCloud — skipping.`, { error: true, ms: 5000 });
+      P.loading = false;
+      P.playing = false;
+      setTimeout(() => next({ auto: true }), 600);
+    });
+  }
+}
+
+async function soundCloudStart(item, token, autoplay) {
+  try {
+    await scApi;
+  } catch {
+    P.loading = false;
+    P.loaded = false;
+    renderPlayer();
+    return;
+  }
+  if (token !== P.token) return;
+  const url = 'https://api.soundcloud.com/tracks/' + item.id;
+  P.loading = autoplay;
+  renderPlayer();
+  if (!sc) {
+    const iframe = $('#scPlayer');
+    iframe.src = widgetUrl(item.id, autoplay);
+    sc = SC.Widget(iframe);
+    bindSoundCloudEvents();
+    await new Promise((resolve) => sc.bind(SC.Widget.Events.READY, resolve));
+    if (token !== P.token) return;
+    sc.setVolume(P.muted ? 0 : P.volume);
+  } else {
+    sc.load(url, {
+      auto_play: autoplay,
+      callback() {
+        if (token !== P.token) return;
+        sc.setVolume(P.muted ? 0 : P.volume);
+      },
+    });
+  }
+  if (autoplay) {
+    setTimeout(() => {
+      if (token !== P.token || P.engine !== 'soundcloud' || !P.loading) return;
+      const cur = current();
+      toast(`Can't play “${cur?.title || 'track'}” on SoundCloud — skipping.`, { error: true, ms: 5000 });
+      P.loading = false;
+      next({ auto: true });
+    }, 12000);
+  }
+}
+
+// ===========================================================================
 // Unified player
 // ===========================================================================
 
@@ -359,6 +494,8 @@ function stopEngine(nextSource) {
     if (nextSource !== 'spotify' && P.playing) spotifyControl('pause');
   } else if (P.engine === 'youtube' && yt && nextSource !== 'youtube') {
     yt.stopVideo?.();
+  } else if (P.engine === 'soundcloud' && sc && nextSource !== 'soundcloud') {
+    sc.pause();
   }
 }
 
@@ -383,6 +520,9 @@ async function playIndex(i, { autoplay = true } = {}) {
     P.loading = autoplay;
     if (autoplay) yt.loadVideoById(item.id);
     else yt.cueVideoById(item.id);
+    renderPlayer();
+  } else if (item.source === 'soundcloud') {
+    await soundCloudStart(item, token, autoplay);
     renderPlayer();
   } else if (autoplay) {
     await spotifyStart(item, token);
@@ -433,6 +573,8 @@ function togglePlay() {
     P.playing = !P.playing;
     sp.lastSync = performance.now();
     renderPlayer();
+  } else if (P.engine === 'soundcloud' && sc) {
+    P.playing ? sc.pause() : sc.play();
   }
 }
 
@@ -442,6 +584,7 @@ function seek(ms) {
   P.position = ms;
   sp.lastSync = performance.now();
   if (P.engine === 'youtube') yt.seekTo(ms / 1000, true);
+  else if (P.engine === 'soundcloud' && sc) sc.seekTo(ms);
   else if (P.engine === 'spotify') {
     clearTimeout(sp.endTimer);
     sp.endTimer = null;
@@ -465,6 +608,7 @@ function setVolume(v) {
     yt.setVolume(P.volume);
     if (!P.muted) yt.unMute();
   }
+  if (sc?.setVolume) sc.setVolume(P.muted ? 0 : P.volume);
   pushSpotifyVolume();
   persist();
   renderVolume();
@@ -473,6 +617,7 @@ function setVolume(v) {
 function toggleMute() {
   P.muted = !P.muted;
   if (yt?.mute) P.muted ? yt.mute() : yt.unMute();
+  if (sc?.setVolume) sc.setVolume(P.muted ? 0 : P.volume);
   pushSpotifyVolume();
   persist();
   renderVolume();
@@ -601,7 +746,7 @@ function cycleRepeat() {
 }
 
 // ---- autoplay -----------------------------------------------------------------
-// When the queue runs low, add recommendations (Spotify song radio / YouTube Mix) seeded from
+// When the queue runs low, add recommendations (Spotify radio / YouTube Mix / SoundCloud related) seeded from
 // the newest track in the queue, so the music keeps drifting on like Spotify's autoplay.
 
 const AUTOPLAY_AHEAD = 3; // refill when fewer than this many tracks are left
@@ -616,7 +761,7 @@ const autoplayOn = () => P.autoplay !== 'off' && P.repeat !== 'all';
 function songKey(item) {
   const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '');
   let t = String(item.title || '');
-  if (item.source === 'youtube') {
+  if (item.source === 'youtube' || item.source === 'soundcloud') {
     const parts = t.split(/\s+[-–|]\s+/); // "Artist - Title (Official Video)"
     if (parts.length > 1) t = parts[1];
   } else {
@@ -766,8 +911,7 @@ function renderPlayer() {
 
   // Now-playing panel
   const np = $('#nowPlaying');
-  np.className = 'nowplaying ' + (P.engine === 'youtube' ? 'youtube' : item?.source === 'spotify' ? 'spotify' : '');
-  if (item?.source === 'youtube' && P.engine !== 'youtube') np.classList.add('spotify'); // show thumbnail until loaded
+  np.className = 'nowplaying ' + (P.engine === 'youtube' ? 'youtube' : item ? 'art' : '');
   const npArt = $('#npArt');
   if (!item?.art) npArt.removeAttribute('src');
   else if (npArt.getAttribute('src') !== item.art) npArt.src = item.art;
@@ -992,11 +1136,10 @@ function openTrackMenu(rect, { ctx, index, item }) {
     { text: '+ New playlist…', run: () => createPlaylist([item], item.title) },
     '-',
     {
-      text: item.source === 'spotify' ? 'Open in Spotify' : 'Open on YouTube',
-      run: () =>
-        window.open(item.source === 'spotify' ? `https://open.spotify.com/track/${item.id}` : `https://www.youtube.com/watch?v=${item.id}`, '_blank'),
+      text: { spotify: 'Open in Spotify', youtube: 'Open on YouTube', soundcloud: 'Open on SoundCloud' }[item.source] || 'Open',
+      run: () => window.open(itemLink(item), '_blank'),
     },
-    { text: 'Copy link', run: () => navigator.clipboard.writeText(item.source === 'spotify' ? `https://open.spotify.com/track/${item.id}` : `https://youtu.be/${item.id}`).then(() => toast('Link copied')) },
+    { text: 'Copy link', run: () => navigator.clipboard.writeText(itemLink(item)).then(() => toast('Link copied')) },
   ];
   if (ctx === 'queue') entries.splice(0, 2, { text: 'Remove from queue', run: () => removeFromQueue(index) });
   openMenu(rect, entries);
@@ -1042,11 +1185,11 @@ function renderSearchView() {
     <div class="view-head">
       <form class="search-box${s.busy ? ' busy' : ''}" id="searchForm">
         ${icon('search', 18)}
-        <input id="q" placeholder="Search songs — or paste a Spotify / YouTube link (track, album, playlist)" value="${esc(s.q)}" autocomplete="off" spellcheck="false" />
+        <input id="q" placeholder="Search songs — or paste a Spotify, YouTube, or SoundCloud link" value="${esc(s.q)}" autocomplete="off" spellcheck="false" />
         <div class="spin"></div>
       </form>
       <div class="seg" id="filter">
-        ${['all', 'spotify', 'youtube'].map((f) => `<button data-f="${f}" class="${s.filter === f ? 'on' : ''}">${{ all: 'All', spotify: 'Spotify', youtube: 'YouTube' }[f]}</button>`).join('')}
+        ${['all', ...ALL_SOURCES].map((f) => `<button data-f="${f}" class="${s.filter === f ? 'on' : ''}">${{ all: 'All', ...SOURCE_LABEL }[f]}</button>`).join('')}
       </div>
     </div>
     <div class="view-body" id="searchBody"></div>`;
@@ -1077,14 +1220,15 @@ function renderSearchBody() {
     return;
   }
 
-  const has = s.results.spotify || s.results.youtube;
+  const has = ALL_SOURCES.some((src) => s.results[src]);
   if (!has && !s.busy) {
     body.innerHTML = `<div class="placeholder">
-      <h2>Play Spotify and YouTube in one queue</h2>
-      <div>Search both at once, or paste any link.</div>
+      <h2>Play Spotify, YouTube, and SoundCloud in one queue</h2>
+      <div>Search all three at once, or paste any link.</div>
       <div class="tips">
         <div>${sourceBadge('spotify')} &nbsp;open.spotify.com/track/… · /album/… · /playlist/…</div>
         <div>${sourceBadge('youtube')} &nbsp;youtube.com/watch?v=… · youtu.be/… · playlist?list=…</div>
+        <div>${sourceBadge('soundcloud')} &nbsp;soundcloud.com/…/… · /sets/… · on.soundcloud.com/…</div>
         <div style="color:var(--dim);margin-top:6px">Tip: drag tracks onto a playlist in the sidebar. Space = play/pause.</div>
       </div></div>`;
     return;
@@ -1104,9 +1248,9 @@ function renderSearchBody() {
       inner = `<div class="col-msg">${esc(r.error)}${fix}</div>`;
     } else if (!r.length) inner = '<div class="col-msg">No results.</div>';
     else inner = `<ul class="tracks" data-list="${source}">${r.map((it, i) => trackRow(it, { ctx: 'results', index: i, badge: false })).join('')}</ul>`;
-    return `<section><div class="col-title">${icon(source, 18)} ${source === 'spotify' ? 'Spotify' : 'YouTube'}</div>${inner}</section>`;
+    return `<section><div class="col-title">${icon(source, 18)} ${sourceLabel(source)}</div>${inner}</section>`;
   };
-  const sources = s.filter === 'all' ? ['spotify', 'youtube'] : [s.filter];
+  const sources = s.filter === 'all' ? ALL_SOURCES : [s.filter];
   body.innerHTML = `<div class="cols ${sources.length === 1 ? 'single' : ''}">${sources.map(col).join('')}</div>`;
 }
 
@@ -1116,7 +1260,7 @@ async function runSearch(q) {
   s.q = q.trim();
   const seq = ++searchSeq;
   if (!s.q) {
-    s.results = { spotify: null, youtube: null };
+    s.results = { spotify: null, youtube: null, soundcloud: null };
     s.resolved = null;
     s.busy = false;
     return renderSearchBody();
@@ -1139,8 +1283,8 @@ async function runSearch(q) {
   }
 
   s.resolved = null;
-  const sources = s.filter === 'all' ? ['spotify', 'youtube'] : [s.filter];
-  s.results = { spotify: null, youtube: null };
+  const sources = s.filter === 'all' ? ALL_SOURCES : [s.filter];
+  s.results = { spotify: null, youtube: null, soundcloud: null };
   s.busy = true;
   renderSearchBody();
   await Promise.all(
@@ -1170,14 +1314,14 @@ function renderQueueView() {
   $('#main').innerHTML = `
     <div class="view-head">
       <h1>Queue</h1>
-      <div class="sub">${P.queue.length} tracks · ${totalDuration(P.queue)} · ${P.queue.filter((i) => i.source === 'spotify').length} Spotify / ${P.queue.filter((i) => i.source === 'youtube').length} YouTube</div>
+      <div class="sub">${P.queue.length} tracks · ${totalDuration(P.queue)} · ${sourceSummary(P.queue)}</div>
       <div class="actions">
         <button class="btn ghost" id="qSave" ${P.queue.length ? '' : 'disabled'}>Save as playlist</button>
         <button class="btn ghost danger" id="qClear" ${P.queue.length > 1 ? '' : 'disabled'}>Clear queue</button>
         <div class="autoplay-pick" title="When your queue runs out, keep playing recommendations">
           <span>Autoplay</span>
           <div class="seg" id="autoplayMode">
-            ${['off', 'same', 'both'].map((m) => `<button data-m="${m}" class="${P.autoplay === m ? 'on' : ''}">${{ off: 'Off', same: 'Same app', both: 'Spotify + YouTube' }[m]}</button>`).join('')}
+            ${['off', 'same', 'both'].map((m) => `<button data-m="${m}" class="${P.autoplay === m ? 'on' : ''}">${{ off: 'Off', same: 'Same app', both: 'All apps' }[m]}</button>`).join('')}
           </div>
         </div>
       </div>
@@ -1216,12 +1360,10 @@ function upcomingGroups(after) {
 function renderPlaylistView() {
   const pl = state.playlists.find((p) => p.id === state.view.id);
   if (!pl) return go({ name: 'search' });
-  const counts = { spotify: 0, youtube: 0 };
-  for (const i of pl.items) counts[i.source]++;
   $('#main').innerHTML = `
     <div class="view-head">
       <h1>${esc(pl.name)}</h1>
-      <div class="sub">${pl.items.length} tracks · ${totalDuration(pl.items)} · ${counts.spotify} Spotify / ${counts.youtube} YouTube</div>
+      <div class="sub">${pl.items.length} tracks · ${totalDuration(pl.items)} · ${sourceSummary(pl.items)}</div>
       <div class="actions">
         <button class="btn primary" id="plPlay" ${pl.items.length ? '' : 'disabled'}>${icon('play', 16)} Play</button>
         <button class="btn ghost" id="plShuffle" ${pl.items.length ? '' : 'disabled'}>${icon('shuffle', 16)} Shuffle</button>
@@ -1245,7 +1387,7 @@ function renderPlaylistView() {
     if (name) savePlaylist({ ...pl, name });
   };
   $('#plDelete').onclick = async () => {
-    if (!(await confirmDialog('Delete playlist?', `“${pl.name}” will be removed. The songs stay on Spotify and YouTube.`, 'Delete'))) return;
+    if (!(await confirmDialog('Delete playlist?', `“${pl.name}” will be removed. The songs stay on Spotify, YouTube, and SoundCloud.`, 'Delete'))) return;
     await api('/api/playlists/' + pl.id, { method: 'DELETE' });
     state.playlists = state.playlists.filter((p) => p.id !== pl.id);
     go({ name: 'search' });
@@ -1556,6 +1698,7 @@ function wire() {
 function boot() {
   wire();
   loadYouTube();
+  loadSoundCloud();
   renderAll();
   renderMain();
   loadPlaylists();
@@ -1566,7 +1709,7 @@ function boot() {
   }, 250);
 
   // Restore the last track (cued, not playing).
-  if (current()?.source === 'youtube') playIndex(P.index, { autoplay: false });
+  if (current()?.source === 'youtube' || current()?.source === 'soundcloud') playIndex(P.index, { autoplay: false });
 
   // Deep link: /?q=some+song
   const q = new URLSearchParams(location.search).get('q');

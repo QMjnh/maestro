@@ -9,6 +9,7 @@
   --dim: #646b76;
   --spotify: #1ed760;
   --youtube: #ff4040;
+  --soundcloud: #ff5500;
   --accent: #e9ebef;
   --radius: 10px;
   color-scheme: dark;
@@ -89,9 +90,11 @@ svg { display: block; }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .3px; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; white-space: nowrap; }
 .badge.spotify { color: var(--spotify); background: #1ed76018; }
 .badge.youtube { color: var(--youtube); background: #ff404018; }
+.badge.soundcloud { color: var(--soundcloud); background: #ff550018; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; }
 .dot.spotify { background: var(--spotify); }
 .dot.youtube { background: var(--youtube); }
+.dot.soundcloud { background: var(--soundcloud); }
 
 /* ---- main views -------------------------------------------------------- */
 .view-head { position: sticky; top: 0; z-index: 2; background: linear-gradient(var(--panel) 80%, transparent); padding: 20px 24px 14px; }
@@ -112,7 +115,7 @@ svg { display: block; }
 .autoplay-pick { display: flex; align-items: center; gap: 10px; margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 600; }
 .autoplay-pick .seg { margin-top: 0; }
 
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .cols.single { grid-template-columns: 1fr; }
 .col-title { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 10px 8px; font-size: 15px; }
 .col-msg { color: var(--muted); padding: 16px 8px; font-size: 13px; }
@@ -128,6 +131,7 @@ svg { display: block; }
 .track:hover { background: var(--panel-2); }
 .track.current .t-title { color: var(--spotify); }
 .track.current.youtube .t-title { color: var(--youtube); }
+.track.current.soundcloud .t-title { color: var(--soundcloud); }
 .track .num { color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 .track .art { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; background: var(--panel-2); }
 .track.youtube .art { object-fit: cover; }
@@ -153,8 +157,8 @@ svg { display: block; }
 .np-art:not([src]) { visibility: hidden; }
 .np-empty { aspect-ratio: 1; display: grid; place-items: center; text-align: center; color: var(--dim); padding: 24px; }
 .nowplaying.youtube .yt-wrap { display: block; }
-.nowplaying.spotify .np-art { display: block; }
-.nowplaying.youtube .np-empty, .nowplaying.spotify .np-empty { display: none; }
+.nowplaying.art .np-art { display: block; }
+.nowplaying.youtube .np-empty, .nowplaying.art .np-empty { display: none; }
 .np-title { font-size: 20px; font-weight: 700; margin-top: 14px; }
 .np-artist { color: var(--muted); }
 .np-note { margin-top: 12px; font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: flex-start; }
@@ -183,6 +187,7 @@ svg { display: block; }
 .bar-fill { height: 100%; width: 0; border-radius: 2px; background: var(--text); position: relative; pointer-events: none; }
 .bar:hover .bar-fill { background: var(--spotify); }
 .player.youtube .bar:hover .bar-fill { background: var(--youtube); }
+.player.soundcloud .bar:hover .bar-fill { background: var(--soundcloud); }
 .bar:hover .bar-fill::after { content: ''; position: absolute; right: -6px; top: -4px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
 .pl-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .volume { flex: 0 0 110px; }
@@ -217,6 +222,17 @@ svg { display: block; }
 .toast { background: #2b313b; padding: 10px 16px; border-radius: 8px; box-shadow: 0 8px 30px #0009; max-width: 520px; animation: toast-in .2s ease-out; pointer-events: auto; }
 .toast.error { background: #4a1f22; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+#scPlayer {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+}
 
 ::-webkit-scrollbar { width: 12px; }
 ::-webkit-scrollbar-thumb { background: #ffffff22; border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }

@@ -54,7 +54,7 @@ sealed class MainForm : Form
     async Task InitWebView()
     {
         var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Maestro", "WebView2");
-        // Autoplay lets a YouTube video start on its own when a Spotify song hands over to it.
+        // Autoplay lets a YouTube or SoundCloud track start on its own when another engine hands over to it.
         var options = new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required");
         env = await CoreWebView2Environment.CreateAsync(null, dataDir, options);
         await web.EnsureCoreWebView2Async(env);
@@ -71,7 +71,7 @@ sealed class MainForm : Form
         core.AddWebResourceRequestedFilter(Origin + "/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += OnWebResourceRequested;
         core.DocumentTitleChanged += (_, _) => Text = core.DocumentTitle is { Length: > 0 } t ? t : "Maestro";
-        // Links (Open in Spotify / YouTube) go to the default browser.
+        // Links (Open in Spotify / YouTube / SoundCloud) go to the default browser.
         core.NewWindowRequested += (_, e) => { e.Handled = true; OpenExternal(e.Uri); };
         core.NavigationStarting += (_, e) =>
         {

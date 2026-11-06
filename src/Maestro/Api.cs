@@ -58,7 +58,8 @@ sealed class Api(SpotifyApp spotify)
                     return new JsonObject { ["items"] = await spotify.Call("search", q, 25) };
                 }
                 if (query["source"] == "youtube") return new { items = await YouTube.Search(q, settings.YoutubeApiKey) };
-                throw new BadRequest("source must be spotify or youtube");
+                if (query["source"] == "soundcloud") return new { items = await SoundCloud.Search(q) };
+                throw new BadRequest("source must be spotify, youtube, or soundcloud");
             }
 
             // Recommendations to keep playing after the queue runs out.
@@ -66,7 +67,7 @@ sealed class Api(SpotifyApp spotify)
             {
                 var source = query["source"];
                 var id = query["id"] ?? "";
-                if (source is not ("spotify" or "youtube") || id.Length == 0) throw new BadRequest("source and id are required");
+                if (source is not ("spotify" or "youtube" or "soundcloud") || id.Length == 0) throw new BadRequest("source and id are required");
                 var items = await radio.For(source, id, query["title"] ?? "", query["artist"] ?? "", query["mix"] == "both", settings);
                 return new { items };
             }
@@ -90,7 +91,12 @@ sealed class Api(SpotifyApp spotify)
                     var (title, items) = await YouTube.Playlist(yt.Id, settings.YoutubeApiKey);
                     return new { title, items };
                 }
-                throw new BadRequest("That doesn't look like a Spotify or YouTube link.");
+                if (SoundCloud.IsUrl(url))
+                {
+                    var (title, items, truncated) = await SoundCloud.Resolve(url);
+                    return new { title, items, truncated };
+                }
+                throw new BadRequest("That doesn't look like a Spotify, YouTube, or SoundCloud link.");
             }
 
             // Polled while a Spotify track is playing; never launches Spotify by itself.

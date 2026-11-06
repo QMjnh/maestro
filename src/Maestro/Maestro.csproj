@@ -11,8 +11,8 @@
     <ApplicationIcon>maestro.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Product>Maestro</Product>
-    <Description>One player for Spotify and YouTube</Description>
-    <Version>2.1.0</Version>
+    <Description>One player for Spotify, YouTube, and SoundCloud</Description>
+    <Version>0.0.2</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- Needed by [LibraryImport] (the generated Win32 interop). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
