@@ -9,23 +9,40 @@ queue or playlist that mixes them. Maestro switches between the two automaticall
   There are no API keys and no Premium requirement: Maestro uses the app's own player and search (details below).
 - **YouTube** plays in YouTube's embedded player inside Maestro's window. Search needs no API key.
 
-**You only open Maestro.** It starts Spotify in the background, keeps Spotify's window hidden, and closes Spotify
-again when you quit (if Maestro was the one that started it).
+**You only open Maestro.** It starts Spotify in the background and closes it again when you quit. Want Spotify's own
+window? Open Spotify like you normally would: it shows up, and from then on it's yours (Maestro won't hide or close it).
 
-## Run it
+## Install
 
-Requirements: Windows 10/11, the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0),
-and the Spotify desktop app. WebView2 (built into Windows 11 and current Windows 10) shows the UI.
+Paste this into PowerShell (Windows 10/11, no admin needed):
 
-Double-click `Maestro.cmd`. The first time, it builds `dist\Maestro.exe` (this needs the .NET 10 SDK). After that you can
-run or pin `dist\Maestro.exe` directly. To build by hand:
-
+```powershell
+irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
 ```
-dotnet publish src\Maestro -c Release -o dist
+
+That's it. Maestro is now in the Start menu (search "Maestro"), on Win+R as `maestro`, and on your PATH as `maestro`.
+Run the same command again to update. You also need the [Spotify desktop app](https://www.spotify.com/download)
+(or SpotX) for Spotify songs; YouTube works without it.
+
+**Options.** To pass flags, use this form instead:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1))) -DesktopShortcut
 ```
+
+| Flag | |
+|---|---|
+| `-DesktopShortcut` | Also add a desktop shortcut. |
+| `-Version v2.1.0` | Install a specific release instead of the newest. |
+| `-InstallDir <path>` | Install somewhere other than `%LOCALAPPDATA%\Programs\Maestro`. |
+| `-NoPath` | Don't add the `maestro` command to PATH. |
+| `-NoLaunch` | Don't open Maestro when done. |
+| `-Uninstall` | Remove Maestro. Add `-Purge` to also delete your settings and playlists. |
+
+You can also uninstall from **Settings › Apps**.
 
 **First time:** if Spotify is already open without Maestro support, Maestro asks once to restart it. If Spotify
-shows its login screen, Maestro brings that window up so you can sign in, then hides it again.
+shows its login screen, Maestro brings that window up so you can sign in.
 
 ## Using it
 
@@ -40,7 +57,8 @@ shows its login screen, Maestro brings that window up so you can sign in, then h
 | **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search |
 
 Settings has switches for *Keep Spotify's window hidden* and *Close Spotify when Maestro closes* (both on by default).
-When Maestro leaves Spotify running, it hands Spotify's window back minimized, so Spotify is never left invisible.
+Both only apply to a Spotify that Maestro started and that you haven't opened yourself. A Spotify you start is never
+hidden or closed by Maestro.
 
 ## How the Spotify side works
 
@@ -87,5 +105,19 @@ src/Maestro/
   Store.cs              settings + playlists in %APPDATA%\Maestro
   NativeMethods.cs      Win32 calls (window hiding, single instance, dark title bar)
   wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe
+install.ps1             the one-line installer / updater / uninstaller
+.github/workflows/      release.yml: builds Maestro-win-x64.exe for each v* tag
 tools/make-icon.ps1     regenerates maestro.ico
 ```
+
+## Build from source
+
+Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+```
+dotnet run --project src\Maestro                               # run it
+dotnet publish src\Maestro -c Release -o dist                  # build dist\Maestro.exe
+.\install.ps1 -ExePath dist\Maestro.exe                        # install your build
+```
+
+To publish a release: push a tag like `v2.1.0` (or run the *Release* workflow from the Actions tab).

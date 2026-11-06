@@ -55,6 +55,48 @@ static partial class NativeMethods
     [LibraryImport("dwmapi.dll")]
     private static partial int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct PROCESSENTRY32W
+    {
+        public uint dwSize, cntUsage, th32ProcessID;
+        public IntPtr th32DefaultHeapID;
+        public uint th32ModuleID, cntThreads, th32ParentProcessID;
+        public int pcPriClassBase;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExeFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern bool Process32FirstW(IntPtr snapshot, ref PROCESSENTRY32W entry);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern bool Process32NextW(IntPtr snapshot, ref PROCESSENTRY32W entry);
+
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr handle);
+
+    /// <summary>
+    /// "Top" processes of an exe: ones not started by another copy of the same exe. For Chromium
+    /// apps like Spotify that's the main process plus any fresh launch (e.g. from the Start menu).
+    /// </summary>
+    public static HashSet<uint> RootProcesses(string exeName)
+    {
+        var all = new Dictionary<uint, uint>(); // pid -> parent, for exeName only
+        var snap = CreateToolhelp32Snapshot(0x2 /* TH32CS_SNAPPROCESS */, 0);
+        if (snap == -1) return [];
+        try
+        {
+            var e = new PROCESSENTRY32W { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32W>() };
+            for (var ok = Process32FirstW(snap, ref e); ok; ok = Process32NextW(snap, ref e))
+                if (string.Equals(e.szExeFile, exeName, StringComparison.OrdinalIgnoreCase)) all[e.th32ProcessID] = e.th32ParentProcessID;
+        }
+        finally { CloseHandle(snap); }
+        return all.Where(p => !all.ContainsKey(p.Value)).Select(p => p.Key).ToHashSet();
+    }
+
     /// <summary>Dark title bar to match the UI (Windows 10 20H1+ / 11).</summary>
     public static void UseDarkTitleBar(IntPtr hwnd)
     {
