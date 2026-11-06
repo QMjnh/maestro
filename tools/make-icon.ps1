@@ -1,45 +1,58 @@
-# Draws Maestro's app icon (same design as src/Maestro/wwwroot/icon.svg) into a multi-size .ico.
+# Draws Maestro's app icon from the horizontal logo into a multi-size .ico.
 # Usage: powershell -ExecutionPolicy Bypass -File tools\make-icon.ps1
 Add-Type -AssemblyName System.Drawing
 
+$logoPath = Join-Path $PSScriptRoot '..\logo\logo-horizontal.png'
 $out = Join-Path $PSScriptRoot '..\src\Maestro\maestro.ico'
 $sizes = 16, 20, 24, 32, 40, 48, 64, 128, 256
 
-function New-IconPng([int]$size) {
-  $bmp = New-Object System.Drawing.Bitmap $size, $size
+if (-not (Test-Path $logoPath)) {
+  Write-Error "Logo not found at $logoPath"
+  exit 1
+}
+
+$src = [System.Drawing.Bitmap]::FromFile($logoPath)
+
+# Clip corners with squircle path for clean transparency
+$master = New-Object System.Drawing.Bitmap $src.Width, $src.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$mg = [System.Drawing.Graphics]::FromImage($master)
+$mg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$mg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$mg.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+
+$r = 276.0; $d = $r * 2.0
+$path = New-Object System.Drawing.Drawing2D.GraphicsPath
+$path.AddArc(0.0, 0.0, $d, $d, 180.0, 90.0)
+$path.AddArc(1254.0 - $d, 0.0, $d, $d, 270.0, 90.0)
+$path.AddArc(1254.0 - $d, 1254.0 - $d, $d, $d, 0.0, 90.0)
+$path.AddArc(0.0, 1254.0 - $d, $d, $d, 90.0, 90.0)
+$path.CloseFigure()
+
+$mg.SetClip($path)
+$mg.DrawImage($src, 0, 0, 1254, 1254)
+$mg.Dispose()
+
+function New-IconPng([int]$size, [System.Drawing.Bitmap]$sourceBmp) {
+  $bmp = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.SmoothingMode = 'AntiAlias'
-  $g.PixelOffsetMode = 'HighQuality'
-  $g.ScaleTransform($size / 64.0, $size / 64.0)
-
-  # Rounded square background
-  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $r = 14; $d = $r * 2
-  $path.AddArc(0, 0, $d, $d, 180, 90); $path.AddArc(64 - $d, 0, $d, $d, 270, 90)
-  $path.AddArc(64 - $d, 64 - $d, $d, $d, 0, 90); $path.AddArc(0, 64 - $d, $d, $d, 90, 90)
-  $path.CloseFigure()
-  $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 16, 19, 24))), $path)
-
-  # Spotify-green and YouTube-red circles, overlapping
-  $g.FillEllipse((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(230, 30, 215, 96))), 11, 18, 28, 28)
-  $g.FillEllipse((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(217, 255, 61, 61))), 25, 18, 28, 28)
-
-  # Play triangle
-  $tri = [System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF 28, 25.5),
-    (New-Object System.Drawing.PointF 28, 38.5),
-    (New-Object System.Drawing.PointF 38, 32))
-  $g.FillPolygon([System.Drawing.Brushes]::White, $tri)
-
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+  $g.DrawImage($sourceBmp, 0, 0, $size, $size)
   $g.Dispose()
+
   $ms = New-Object System.IO.MemoryStream
   $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
   $bmp.Dispose()
   , $ms.ToArray()
 }
 
+$images = foreach ($s in $sizes) { , (New-IconPng $s $master) }
+$master.Dispose()
+$src.Dispose()
+
 # ICO container with PNG-compressed entries (supported since Windows Vista)
-$images = foreach ($s in $sizes) { , (New-IconPng $s) }
 $fs = [System.IO.File]::Create($out)
 $w = New-Object System.IO.BinaryWriter $fs
 $w.Write([uint16]0); $w.Write([uint16]1); $w.Write([uint16]$sizes.Count)

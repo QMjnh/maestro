@@ -21,7 +21,10 @@ sealed class MainForm : Form
     {
         api = new Api(spotify);
         Text = "Maestro";
-        Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
+        using (var icoStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("maestro.ico"))
+        {
+            Icon = icoStream != null ? new Icon(icoStream) : Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
+        }
         BackColor = Color.FromArgb(11, 13, 16);
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.Manual;

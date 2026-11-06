@@ -1,4 +1,4 @@
-<img src="src/Maestro/wwwroot/icon.svg" width="64" height="64" alt="">
+<img src="src/Maestro/wwwroot/icon.png" width="64" height="64" alt="">
 
 # Maestro
 
