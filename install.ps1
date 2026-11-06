@@ -121,6 +121,7 @@ function Install-Maestro {
         Write-Host "==> Using $ExePath"
         Copy-Item $ExePath $tmp
     } else {
+        if ($Version -ne 'latest' -and $Version -notlike 'v*') { $Version = "v$Version" } # release tags are v1.2.3
         $url = if ($Version -eq 'latest') { "https://github.com/$Repo/releases/latest/download/Maestro-win-x64.exe" }
                else { "https://github.com/$Repo/releases/download/$Version/Maestro-win-x64.exe" }
         Write-Host "==> Downloading Maestro ($Version)"
