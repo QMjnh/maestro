@@ -721,6 +721,7 @@ function spotifyStatusText() {
   if (!s) return ['', 'Spotify: checking…'];
   if (!s.supported) return ['warn', 'Spotify control needs Windows'];
   if (s.connected) return ['ok', 'Spotify connected'];
+  if (s.needsLogin) return ['warn clickable', 'Log in to Spotify'];
   if (s.needsRestart) return ['warn clickable', 'Spotify needs a restart — fix'];
   if (s.exe) return ['', 'Spotify opens when needed'];
   return ['warn', 'Spotify app not found'];
@@ -1146,7 +1147,12 @@ async function openSettings() {
   const form = $('#settingsForm');
   try {
     const s = await api('/api/settings');
-    for (const [k, v] of Object.entries(s)) if (form.elements[k]) form.elements[k].value = v;
+    for (const [k, v] of Object.entries(s)) {
+      const el = form.elements[k];
+      if (!el) continue;
+      if (el.type === 'checkbox') el.checked = !!v;
+      else el.value = v;
+    }
   } catch (err) {
     toast(err.message, { error: true });
   }
@@ -1158,6 +1164,7 @@ async function openSettings() {
   dlg.onclose = async () => {
     if (dlg.returnValue !== 'save') return;
     const body = Object.fromEntries(new FormData(form));
+    for (const el of form.querySelectorAll('input[type=checkbox][name]')) body[el.name] = el.checked;
     try {
       await api('/api/settings', { method: 'PUT', body });
       toast('Settings saved');
@@ -1290,7 +1297,11 @@ function wire() {
     if (pl) go({ name: 'playlist', id: pl.id });
   };
   $('#openSettings').onclick = openSettings;
-  $('#spotifyStatus').onclick = () => state.status?.spotify?.needsRestart && restartSpotify();
+  $('#spotifyStatus').onclick = () => {
+    const s = state.status?.spotify;
+    if (s?.needsRestart) restartSpotify();
+    else if (s?.needsLogin) api('/api/spotify/show', { method: 'POST' }).catch((err) => toast(err.message, { error: true }));
+  };
   $('#restartSpotify').onclick = restartSpotify;
   $('#autostartToggle').onchange = async (e) => {
     try {

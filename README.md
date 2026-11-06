@@ -1,4 +1,4 @@
-<img src="public/icon.svg" width="64" height="64" alt="">
+<img src="src/Maestro/wwwroot/icon.svg" width="64" height="64" alt="">
 
 # Maestro
 
@@ -9,20 +9,23 @@ queue or playlist that mixes them. Maestro switches between the two automaticall
   There are no API keys and no Premium requirement: Maestro uses the app's own player and search (details below).
 - **YouTube** plays in YouTube's embedded player inside Maestro's window. Search needs no API key.
 
+**You only open Maestro.** It starts Spotify in the background, keeps Spotify's window hidden, and closes Spotify
+again when you quit (if Maestro was the one that started it).
+
 ## Run it
 
-Requirements: Windows 10/11, [Node.js 18+](https://nodejs.org), and the Spotify desktop app. No `npm install` needed.
+Requirements: Windows 10/11, the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0),
+and the Spotify desktop app. WebView2 (built into Windows 11 and current Windows 10) shows the UI.
+
+Double-click `Maestro.cmd`. The first time, it builds `dist\Maestro.exe` (this needs the .NET 10 SDK). After that you can
+run or pin `dist\Maestro.exe` directly. To build by hand:
 
 ```
-Maestro.cmd            (double-click it), or:
-npm start
+dotnet publish src\Maestro -c Release -o dist
 ```
 
-Maestro opens in its own app window at <http://localhost:5454>. To use your normal browser instead, run
-`npm run serve` and open that URL yourself. Use the `PORT` environment variable to change the port.
-
-**First time:** if Spotify is already open, Maestro asks once to restart it with Maestro support (it reopens minimized).
-To skip that step in the future, turn on *Settings → Start Spotify with Maestro support when Windows starts*.
+**First time:** if Spotify is already open without Maestro support, Maestro asks once to restart it. If Spotify
+shows its login screen, Maestro brings that window up so you can sign in, then hides it again.
 
 ## Using it
 
@@ -31,9 +34,12 @@ To skip that step in the future, turn on *Settings → Start Spotify with Maestr
 | **Search** | Type to search Spotify and YouTube at once. Use the *All / Spotify / YouTube* filter to show one source. |
 | **Paste a link** | Spotify tracks, albums, and playlists, and YouTube videos and playlists. You can play everything, add it to the queue, or save it as a Maestro playlist. |
 | **Queue** | Drag to reorder. Includes shuffle and repeat (all / one). |
-| **Playlists** | Stored locally in `data/playlists.json`. Add tracks from the ⋯ menu, or drag a track onto a playlist in the sidebar. |
+| **Playlists** | Stored in `%APPDATA%\Maestro\playlists.json`. Add tracks from the ⋯ menu, or drag a track onto a playlist in the sidebar. |
 | **Volume** | A single slider controls both YouTube and Spotify. |
 | **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search |
+
+Settings has switches for *Keep Spotify's window hidden* and *Close Spotify when Maestro closes* (both on by default).
+When Maestro leaves Spotify running, it hands Spotify's window back minimized, so Spotify is never left invisible.
 
 ## How the Spotify side works
 
@@ -42,12 +48,12 @@ The Spotify desktop app is a Chromium web page that is already signed in to your
 same internal objects Spotify's own UI uses:
 
 - **Player:** play a specific track, pause, resume, seek, set the volume, and read the exact track and position.
-  Starting a track takes under a second, and the Spotify window never jumps to the front.
+  Starting a track takes under a second.
 - **Search:** Spotify's own search. The query IDs it needs are read from the installed app's code, so search keeps
   working when Spotify updates.
 
 Maestro starts Spotify with that flag when Spotify isn't running. If Spotify was already started without it, Maestro asks
-before restarting it. It never closes Spotify on its own.
+before restarting it.
 
 **Handoffs.** When a Spotify song is about to end, Maestro moves on about 0.3 s early, so Spotify's autoplay never
 starts. If you skip inside Spotify or with your media keys, Maestro sees the track change and follows in its own
@@ -59,23 +65,25 @@ autostart option off; restarting Spotify normally removes the port.
 
 ## Limitations
 
-- Spotify control is Windows-only.
+- Windows only.
 - This relies on Spotify's internal (unofficial) app code. A big Spotify update could change it, and Maestro may need
   a fix when that happens.
 - Spotify playlist and album imports from a link include up to 100 tracks.
 - Some YouTube videos block embedding. Maestro tells you and skips them.
-- The app window uses its own Edge profile (in `data/edge-profile`), so autoplay works when a Spotify track hands
-  off to YouTube. You aren't signed in to YouTube there. Use `npm run serve` with your own browser if you prefer.
+- The window uses its own WebView2 profile (in `%LOCALAPPDATA%\Maestro`), so you aren't signed in to YouTube there.
 
 ## Layout
 
 ```
-server.js               local web server + API (Node, no dependencies)
-lib/spotify-app.js      connects to the Spotify app: player, search, volume, restart, autostart
-lib/ws.js               tiny WebSocket client for the DevTools connection
-lib/launch.js           starts Spotify/Edge without them holding Maestro's port open
-lib/spotify.js          Spotify link parsing and metadata (public embed pages)
-lib/youtube.js          YouTube link parsing, search, playlists
-lib/store.js            settings + playlists in ./data
-public/                 the player UI (plain HTML/CSS/JS)
+src/Maestro/
+  MainForm.cs           the window: WebView2 showing the UI; /api/* requests are answered in-process (no server/port)
+  Api.cs                the API routes the UI calls
+  SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
+  inject.js             the code Maestro runs inside Spotify's page
+  SpotifyLinks.cs       Spotify link parsing and metadata (public embed pages)
+  YouTube.cs            YouTube link parsing, search, playlists
+  Store.cs              settings + playlists in %APPDATA%\Maestro
+  NativeMethods.cs      Win32 calls (window hiding, single instance, dark title bar)
+  wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe
+tools/make-icon.ps1     regenerates maestro.ico
 ```

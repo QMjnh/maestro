@@ -79,12 +79,20 @@
           <h3><span class="dot spotify"></span>Spotify</h3>
           <p class="hint">
             Maestro plays and searches through your Spotify desktop app (SpotX works great), so a free account is fine and
-            no keys are needed. Spotify just has to be started with Maestro support, which Maestro does for you.
+            no keys are needed. Maestro opens Spotify in the background by itself — you never have to open it.
           </p>
           <div class="setting-row">
             <span class="status" id="settingsSpotifyStatus"></span>
             <button type="button" class="btn ghost" id="restartSpotify">Restart Spotify with Maestro support</button>
           </div>
+          <label class="check">
+            <input type="checkbox" name="hideSpotify" />
+            <span>Keep Spotify's window hidden<br /><span class="opt">Spotify runs in the background; Maestro is the only window you see.</span></span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="closeSpotifyOnExit" />
+            <span>Close Spotify when Maestro closes<br /><span class="opt">Only if Maestro was the one that opened it.</span></span>
+          </label>
           <label class="check">
             <input type="checkbox" id="autostartToggle" />
             <span>Start Spotify with Maestro support when Windows starts<br /><span class="opt">Updates Spotify's own startup entry. Without this, Maestro asks to restart Spotify the first time you play something.</span></span>
