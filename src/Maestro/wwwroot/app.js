@@ -134,6 +134,7 @@ const P = {
   volume: Number.isFinite(saved.volume) ? saved.volume : 80,
   muted: !!saved.muted,
   unshuffled: Array.isArray(saved.unshuffled) ? saved.unshuffled : null,
+  autoplay: ['off', 'same', 'both'].includes(saved.autoplay) ? saved.autoplay : 'same', // keep going with recommendations
 
   engine: null, // 'youtube' | 'spotify' | null — what is currently loaded
   loaded: false, // has the current item actually been started this session?
@@ -156,12 +157,13 @@ function persist() {
       volume: P.volume,
       muted: P.muted,
       unshuffled: P.unshuffled,
+      autoplay: P.autoplay,
     }),
   );
 }
 
 const current = () => P.queue[P.index] || null;
-const toEntry = (item) => ({
+const toEntry = (item, auto = false) => ({
   qid: uid(),
   source: item.source,
   id: item.id,
@@ -169,6 +171,7 @@ const toEntry = (item) => ({
   artist: item.artist,
   art: item.art,
   duration: item.duration ?? null,
+  ...(auto ? { auto: true } : {}), // added by autoplay, not by you
 });
 
 // ===========================================================================
@@ -384,6 +387,7 @@ async function playIndex(i, { autoplay = true } = {}) {
   } else if (autoplay) {
     await spotifyStart(item, token);
   }
+  topUpAutoplay();
 }
 
 function onTrackEnded() {
@@ -391,10 +395,16 @@ function onTrackEnded() {
   next({ auto: true });
 }
 
-function next({ auto = false } = {}) {
+async function next({ auto = false } = {}) {
   if (!P.queue.length) return;
   if (P.index < P.queue.length - 1) return playIndex(P.index + 1);
-  if (P.repeat === 'all' || !auto) return playIndex(0);
+  if (P.repeat === 'all') return playIndex(0);
+  if (autoplayOn()) {
+    const at = P.index;
+    await topUpAutoplay();
+    if (P.index === at && P.index < P.queue.length - 1) return playIndex(P.index + 1);
+  }
+  if (!auto) return playIndex(0);
   // End of queue.
   stopEngine(null);
   P.playing = false;
@@ -471,8 +481,10 @@ function toggleMute() {
 // ---- queue operations -------------------------------------------------------
 
 function addToQueue(items, { playNext = false } = {}) {
-  const entries = items.map(toEntry);
-  const at = playNext && P.index >= 0 ? P.index + 1 : P.queue.length;
+  const entries = items.map((i) => toEntry(i));
+  // Your songs go ahead of autoplay's, like in Spotify.
+  const firstAuto = P.queue.findIndex((e, i) => i > P.index && e.auto);
+  const at = playNext && P.index >= 0 ? P.index + 1 : firstAuto >= 0 ? firstAuto : P.queue.length;
   P.queue.splice(at, 0, ...entries);
   if (P.unshuffled) P.unshuffled.push(...entries);
   if (P.index < 0) P.index = 0;
@@ -482,6 +494,7 @@ function addToQueue(items, { playNext = false } = {}) {
 }
 
 function playNow(items) {
+  dropUpcomingAutoplay(); // they were picked for what was playing before; refill from the new song
   const at = addToQueue(items, { playNext: true });
   playIndex(P.index < 0 ? 0 : at);
 }
@@ -489,8 +502,9 @@ function playNow(items) {
 /** Replace the queue with a list (e.g. a playlist) and start at `start`. */
 function playList(items, start = 0, { shuffle = false } = {}) {
   if (!items.length) return;
-  let entries = items.map(toEntry);
+  let entries = items.map((i) => toEntry(i));
   P.unshuffled = null;
+  radio.gen++;
   if (shuffle) {
     P.shuffle = true;
     P.unshuffled = entries.slice();
@@ -533,6 +547,7 @@ function moveInQueue(from, to) {
   if (from === to) return;
   const cur = current();
   const [e] = P.queue.splice(from, 1);
+  delete e.auto; // placed by you now
   P.queue.splice(to, 0, e);
   P.index = P.queue.indexOf(cur);
   persist();
@@ -544,8 +559,10 @@ function clearQueue() {
   P.queue = cur ? [cur] : [];
   P.index = cur ? 0 : -1;
   P.unshuffled = P.shuffle ? P.queue.slice() : null;
+  radio.gen++;
   persist();
   renderAll();
+  topUpAutoplay();
 }
 
 function shuffled(arr) {
@@ -580,6 +597,103 @@ function cycleRepeat() {
   P.repeat = { off: 'all', all: 'one', one: 'off' }[P.repeat];
   persist();
   renderPlayer();
+  topUpAutoplay();
+}
+
+// ---- autoplay -----------------------------------------------------------------
+// When the queue runs low, add recommendations (Spotify song radio / YouTube Mix) seeded from
+// the newest track in the queue, so the music keeps drifting on like Spotify's autoplay.
+
+const AUTOPLAY_AHEAD = 3; // refill when fewer than this many tracks are left
+const AUTOPLAY_BATCH = 10;
+// failed: seeds that gave nothing, so we don't retry them in a loop.
+// gen: bumps whenever upcoming picks are thrown away, so an in-flight fetch doesn't add stale ones.
+const radio = { busy: null, failed: new Set(), gen: 0 };
+
+const autoplayOn = () => P.autoplay !== 'off' && P.repeat !== 'all';
+
+/** Loose "same song by the same artist" key, so a song isn't recommended again (or once per service). */
+function songKey(item) {
+  const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '');
+  let t = String(item.title || '');
+  if (item.source === 'youtube') {
+    const parts = t.split(/\s+[-–|]\s+/); // "Artist - Title (Official Video)"
+    if (parts.length > 1) t = parts[1];
+  } else {
+    t = t.replace(/\s+[-–]\s+.*$/, ''); // "Title - Remastered 2011"
+  }
+  t = norm(t.replace(/\s*[([].*?[)\]]/g, '').replace(/\s(feat|ft)\.?\s.*$/i, ''));
+  // First credited artist; YouTube channels look like "DaftPunkVEVO" / "Daft Punk - Topic".
+  const artist = norm(String(item.artist || '').split(/,|&|\s(?:feat|ft|x)\.?\s/i)[0]).replace(/(vevo|official|topic)$/, '');
+  return t && t + '|' + artist;
+}
+
+function topUpAutoplay() {
+  if (!autoplayOn() || P.index < 0 || P.queue.length - 1 - P.index >= AUTOPLAY_AHEAD) return Promise.resolve();
+  const gen = radio.gen;
+  radio.busy ??= fetchRecommendations().finally(() => {
+    radio.busy = null;
+    renderAll();
+    if (gen !== radio.gen) topUpAutoplay();
+  });
+  renderAll();
+  return radio.busy;
+}
+
+async function fetchRecommendations() {
+  const gen = radio.gen;
+  const seeds = [P.queue[P.queue.length - 1], current()].filter((s, i, a) => s && a.indexOf(s) === i && !radio.failed.has(s.source + s.id));
+  for (const seed of seeds) {
+    let items;
+    try {
+      const q = new URLSearchParams({ source: seed.source, id: seed.id, title: seed.title, artist: seed.artist, mix: P.autoplay });
+      ({ items } = await api('/api/radio?' + q));
+    } catch (err) {
+      radio.failed.add(seed.source + seed.id);
+      toast('Autoplay: ' + err.message, { error: true });
+      continue;
+    }
+    if (gen !== radio.gen) return;
+    const seen = new Set(P.queue.map((e) => e.source + e.id));
+    const keys = new Set(P.queue.map(songKey));
+    const fresh = [];
+    for (const item of items) {
+      const key = songKey(item);
+      if (seen.has(item.source + item.id) || (key && keys.has(key))) continue;
+      seen.add(item.source + item.id);
+      keys.add(key);
+      fresh.push(toEntry(item, true));
+      if (fresh.length >= AUTOPLAY_BATCH) break;
+    }
+    if (!fresh.length) {
+      radio.failed.add(seed.source + seed.id);
+      continue;
+    }
+    P.queue.push(...fresh);
+    if (P.unshuffled) P.unshuffled.push(...fresh);
+    persist();
+    return;
+  }
+}
+
+function setAutoplay(mode) {
+  P.autoplay = mode;
+  radio.failed.clear();
+  dropUpcomingAutoplay(); // re-pick with the new mode (or stop)
+  persist();
+  renderAll();
+  topUpAutoplay();
+}
+
+function dropUpcomingAutoplay() {
+  radio.gen++;
+  const keep = (e, i) => i <= P.index || !e.auto;
+  const before = P.queue.length;
+  const live = P.queue.filter(keep);
+  if (live.length === before) return;
+  const gone = new Set(P.queue.filter((e, i) => !keep(e, i)).map((e) => e.qid));
+  P.queue = live;
+  if (P.unshuffled) P.unshuffled = P.unshuffled.filter((e) => !gone.has(e.qid));
 }
 
 // ===========================================================================
@@ -618,7 +732,7 @@ async function addToPlaylist(pl, items) {
   toast(`Added ${items.length === 1 ? '“' + items[0].title + '”' : items.length + ' tracks'} to ${pl.name}`);
 }
 
-function stripEntry({ qid, ...rest }) {
+function stripEntry({ qid, auto, ...rest }) {
   return rest;
 }
 
@@ -661,8 +775,10 @@ function renderPlayer() {
   $('#npArtist').textContent = item?.artist || '';
   const upcoming = P.queue.slice(P.index + 1, P.index + 4);
   $('#npNext').innerHTML = upcoming.length
-    ? `<div class="list-label">Next up</div><ul class="tracks">${upcoming.map((e, k) => trackRow(e, { ctx: 'queue', index: P.index + 1 + k, compact: true, actions: false, badge: false })).join('')}</ul>`
-    : '';
+    ? `<div class="list-label">${upcoming[0].auto ? 'Next up · Autoplay' : 'Next up'}</div><ul class="tracks">${upcoming.map((e, k) => trackRow(e, { ctx: 'queue', index: P.index + 1 + k, compact: true, actions: false, badge: false })).join('')}</ul>`
+    : radio.busy
+      ? '<div class="list-label">Finding recommendations…</div>'
+      : '';
 
   if (item && 'mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -1058,19 +1174,41 @@ function renderQueueView() {
       <div class="actions">
         <button class="btn ghost" id="qSave" ${P.queue.length ? '' : 'disabled'}>Save as playlist</button>
         <button class="btn ghost danger" id="qClear" ${P.queue.length > 1 ? '' : 'disabled'}>Clear queue</button>
+        <div class="autoplay-pick" title="When your queue runs out, keep playing recommendations">
+          <span>Autoplay</span>
+          <div class="seg" id="autoplayMode">
+            ${['off', 'same', 'both'].map((m) => `<button data-m="${m}" class="${P.autoplay === m ? 'on' : ''}">${{ off: 'Off', same: 'Same app', both: 'Spotify + YouTube' }[m]}</button>`).join('')}
+          </div>
+        </div>
       </div>
+      ${P.autoplay !== 'off' && P.repeat === 'all' ? '<div class="sub">Autoplay is paused while Repeat all is on.</div>' : ''}
     </div>
     <div class="view-body">
       ${
         !P.queue.length
           ? '<div class="placeholder">Your queue is empty. Add songs from Search or a playlist.</div>'
           : `${cur ? `<div class="list-label">Now playing</div><ul class="tracks sortable">${trackRow(cur, { ctx: 'queue', index: P.index })}</ul>` : ''}
-             ${after.length ? `<div class="list-label">Next up</div><ul class="tracks sortable">${after.map((e, k) => trackRow(e, { ctx: 'queue', index: P.index + 1 + k })).join('')}</ul>` : ''}
+             ${upcomingGroups(after)}
+             ${radio.busy ? '<div class="list-label">Finding recommendations…</div>' : ''}
              ${before.length ? `<div class="list-label">Played</div><ul class="tracks sortable">${before.map((e, k) => trackRow(e, { ctx: 'queue', index: k })).join('')}</ul>` : ''}`
       }
     </div>`;
   $('#qSave').onclick = () => createPlaylist(P.queue);
   $('#qClear').onclick = clearQueue;
+  for (const b of $$('#autoplayMode button')) b.onclick = () => setAutoplay(b.dataset.m);
+}
+
+/** Upcoming tracks, split into runs of your picks ("Next up") and autoplay's ("Autoplay"). */
+function upcomingGroups(after) {
+  const groups = [];
+  after.forEach((e, k) => {
+    const auto = !!e.auto;
+    if (!groups.length || groups.at(-1).auto !== auto) groups.push({ auto, rows: [] });
+    groups.at(-1).rows.push(trackRow(e, { ctx: 'queue', index: P.index + 1 + k }));
+  });
+  return groups
+    .map((g) => `<div class="list-label">${g.auto ? 'Autoplay · recommended for you' : 'Next up'}</div><ul class="tracks sortable">${g.rows.join('')}</ul>`)
+    .join('');
 }
 
 // ---- playlist -----------------------------------------------------------------

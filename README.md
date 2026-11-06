@@ -34,6 +34,7 @@ shows its login screen, Maestro brings that window up so you can sign in, then h
 | **Search** | Type to search Spotify and YouTube at once. Use the *All / Spotify / YouTube* filter to show one source. |
 | **Paste a link** | Spotify tracks, albums, and playlists, and YouTube videos and playlists. You can play everything, add it to the queue, or save it as a Maestro playlist. |
 | **Queue** | Drag to reorder. Includes shuffle and repeat (all / one). |
+| **Autoplay** | When the queue runs low, Maestro adds recommendations so the music never stops: Spotify's song radio for Spotify tracks, YouTube's Mix for videos, or both interleaved (*Queue → Autoplay: Off / Same app / Spotify + YouTube*). Songs you add always play before autoplay's picks. |
 | **Playlists** | Stored in `%APPDATA%\Maestro\playlists.json`. Add tracks from the ⋯ menu, or drag a track onto a playlist in the sidebar. |
 | **Volume** | A single slider controls both YouTube and Spotify. |
 | **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search |
@@ -80,6 +81,7 @@ src/Maestro/
   Api.cs                the API routes the UI calls
   SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
   inject.js             the code Maestro runs inside Spotify's page
+  Radio.cs              autoplay recommendations (Spotify song radio, YouTube Mix, or both)
   SpotifyLinks.cs       Spotify link parsing and metadata (public embed pages)
   YouTube.cs            YouTube link parsing, search, playlists
   Store.cs              settings + playlists in %APPDATA%\Maestro

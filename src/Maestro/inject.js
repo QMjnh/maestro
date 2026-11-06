@@ -2,7 +2,7 @@
 // Defines window.__maestro once per page load, using the app's internal "platform" object
 // (found via React props) - the same object Spotify's own UI uses.
 
-if (!window.__maestro || window.__maestro.v !== 1) {
+if (!window.__maestro || window.__maestro.v !== 2) {
   const findPlatform = () => {
     const els = [document.getElementById('main'), ...document.querySelectorAll('body *')].filter(Boolean).slice(0, 200);
     for (const el of els) {
@@ -33,6 +33,8 @@ if (!window.__maestro || window.__maestro.v !== 1) {
   };
   const player = get('PlayerAPI');
   const playback = get('PlaybackAPI');
+  const playlists = get('PlaylistAPI');
+  const tokens = get('TokenProvider');
   if (!player || !playback) throw new Error('MAESTRO_NOT_READY');
 
   // GraphQL query hashes change between Spotify versions; read them from the app's own code.
@@ -59,7 +61,7 @@ if (!window.__maestro || window.__maestro.v !== 1) {
   };
 
   window.__maestro = {
-    v: 1,
+    v: 2,
     state() {
       const s = player.getState();
       const it = s.item;
@@ -104,6 +106,32 @@ if (!window.__maestro || window.__maestro.v !== 1) {
           art: image(t.albumOfTrack && t.albumOfTrack.coverArt && t.albumOfTrack.coverArt.sources),
           duration: (t.duration && t.duration.totalMilliseconds) || null,
         }));
+    },
+    // Spotify's "Go to song radio" list for a track (about 50 songs).
+    async radio(uri) {
+      if (!playlists || !tokens) throw new Error('Spotify radio is not available in this app version');
+      const { accessToken } = await tokens.loadToken();
+      const res = await fetch('https://spclient.wg.spotify.com/inspiredby-mix/v2/seed_to_playlist/' + uri + '?response-format=json', {
+        headers: { authorization: 'Bearer ' + accessToken },
+      });
+      if (!res.ok) throw new Error('Spotify radio failed (' + res.status + ')');
+      const station = (await res.json()).mediaItems?.[0]?.uri;
+      if (!station) return [];
+      const { items } = await playlists.getContents(station, { limit: 100 });
+      return items
+        .filter((t) => t.type === 'track' && t.isPlayable && t.uri !== uri)
+        .map((t) => {
+          const img = (t.album && t.album.images) || [];
+          const art = (img.find((i) => i.label === 'standard') || img[0] || {}).url || '';
+          return {
+            source: 'spotify',
+            id: t.uri.split(':')[2],
+            title: t.name,
+            artist: (t.artists || []).map((a) => a.name).join(', '),
+            art: art.replace(/^spotify:image:/, 'https://i.scdn.co/image/'),
+            duration: (t.duration && t.duration.milliseconds) || null,
+          };
+        });
     },
   };
 }

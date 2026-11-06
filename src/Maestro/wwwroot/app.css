@@ -109,6 +109,8 @@ svg { display: block; }
 .seg { display: inline-flex; background: var(--panel-2); border-radius: 999px; padding: 3px; margin-top: 12px; }
 .seg button { padding: 5px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; font-size: 13px; }
 .seg button.on { background: var(--hover); color: var(--text); }
+.autoplay-pick { display: flex; align-items: center; gap: 10px; margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 600; }
+.autoplay-pick .seg { margin-top: 0; }
 
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .cols.single { grid-template-columns: 1fr; }
