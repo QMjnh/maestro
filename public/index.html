@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Maestro</title>
+    <link rel="icon" href="icon.svg" />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand"><img src="icon.svg" alt="" /> Maestro</div>
+        <nav class="nav">
+          <button class="nav-item" data-view="search"><span data-icon="search"></span>Search</button>
+          <button class="nav-item" data-view="queue"><span data-icon="queue"></span>Queue <span class="count" id="queueCount"></span></button>
+        </nav>
+        <div class="section-title">
+          Playlists
+          <button class="icon-btn small" id="newPlaylist" title="New playlist"><span data-icon="plus"></span></button>
+        </div>
+        <ul class="playlist-nav" id="playlistNav"></ul>
+        <div class="sidebar-foot">
+          <div class="status" id="spotifyStatus"></div>
+          <button class="nav-item" id="openSettings"><span data-icon="settings"></span>Settings</button>
+        </div>
+      </aside>
+
+      <main class="main" id="main"></main>
+
+      <aside class="nowplaying" id="nowPlaying">
+        <div class="np-label">Now playing</div>
+        <div class="np-media">
+          <div class="yt-wrap" id="ytWrap"><div id="ytPlayer"></div></div>
+          <img class="np-art" id="npArt" alt="" />
+          <div class="np-empty" id="npEmpty">Nothing playing yet.<br />Search for a song or paste a link.</div>
+        </div>
+        <div class="np-title" id="npTitle"></div>
+        <div class="np-artist" id="npArtist"></div>
+        <div class="np-note" id="npNote"></div>
+        <div class="np-next" id="npNext"></div>
+      </aside>
+
+      <footer class="player">
+        <div class="pl-track">
+          <img class="pl-art" id="plArt" alt="" />
+          <div class="pl-meta">
+            <div class="pl-title" id="plTitle"></div>
+            <div class="pl-artist" id="plArtist"></div>
+          </div>
+        </div>
+        <div class="pl-center">
+          <div class="pl-controls">
+            <button class="icon-btn toggle" id="btnShuffle" title="Shuffle"><span data-icon="shuffle"></span></button>
+            <button class="icon-btn" id="btnPrev" title="Previous (Ctrl+←)"><span data-icon="prev"></span></button>
+            <button class="play-btn" id="btnPlay" title="Play / pause (Space)"><span data-icon="play"></span></button>
+            <button class="icon-btn" id="btnNext" title="Next (Ctrl+→)"><span data-icon="next"></span></button>
+            <button class="icon-btn toggle" id="btnRepeat" title="Repeat"><span data-icon="repeat"></span></button>
+          </div>
+          <div class="pl-progress">
+            <span class="time" id="timeCur">0:00</span>
+            <div class="bar" id="progress"><div class="bar-fill" id="progressFill"></div></div>
+            <span class="time" id="timeDur">0:00</span>
+          </div>
+        </div>
+        <div class="pl-right">
+          <span class="source-chip" id="sourceChip"></span>
+          <button class="icon-btn" id="btnMute" title="Mute"><span data-icon="volume"></span></button>
+          <div class="bar volume" id="volume" title="Volume (YouTube and Spotify)"><div class="bar-fill" id="volumeFill"></div></div>
+        </div>
+      </footer>
+    </div>
+
+    <dialog class="modal" id="settingsDialog">
+      <form method="dialog" id="settingsForm">
+        <h2>Settings</h2>
+
+        <section>
+          <h3><span class="dot spotify"></span>Spotify</h3>
+          <p class="hint">
+            Maestro plays and searches through your Spotify desktop app (SpotX works great), so a free account is fine and
+            no keys are needed. Spotify just has to be started with Maestro support, which Maestro does for you.
+          </p>
+          <div class="setting-row">
+            <span class="status" id="settingsSpotifyStatus"></span>
+            <button type="button" class="btn ghost" id="restartSpotify">Restart Spotify with Maestro support</button>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="autostartToggle" />
+            <span>Start Spotify with Maestro support when Windows starts<br /><span class="opt">Updates Spotify's own startup entry. Without this, Maestro asks to restart Spotify the first time you play something.</span></span>
+          </label>
+          <label>Spotify.exe path <span class="opt">(optional)</span>
+            <input name="spotifyExePath" spellcheck="false" id="exePathInput" />
+          </label>
+        </section>
+
+        <section>
+          <h3><span class="dot youtube"></span>YouTube</h3>
+          <p class="hint">Search works without a key. A YouTube Data API key is optional and just makes search and big playlist imports more reliable.</p>
+          <label>API key <span class="opt">(optional)</span> <input name="youtubeApiKey" type="password" autocomplete="off" /></label>
+        </section>
+
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button value="save" class="btn primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal small" id="confirmDialog">
+      <form method="dialog">
+        <h2 id="confirmTitle"></h2>
+        <p class="hint" id="confirmText"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button value="ok" class="btn primary" id="confirmOk">OK</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal small" id="promptDialog">
+      <form method="dialog">
+        <h2 id="promptTitle"></h2>
+        <input id="promptInput" autocomplete="off" />
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button value="ok" class="btn primary">OK</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="menu" id="menu" hidden></div>
+    <div class="toasts" id="toasts"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
