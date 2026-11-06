@@ -1,0 +1,40 @@
+name: Release
+
+# Push a tag like v2.1.0 (or run this by hand from the Actions tab) to build Maestro-win-x64.exe
+# and publish it as a GitHub release. install.ps1 downloads from the newest release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to create, e.g. v2.1.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $tag = '${{ github.event.inputs.tag || github.ref_name }}'
+          dotnet publish src/Maestro -c Release -o out "-p:Version=$($tag.TrimStart('v'))"
+          Move-Item out/Maestro.exe out/Maestro-win-x64.exe
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.event.inputs.tag || github.ref_name }}'
+          gh release create $tag out/Maestro-win-x64.exe --target '${{ github.sha }}' --title "Maestro $tag" --generate-notes

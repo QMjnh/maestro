@@ -39,14 +39,22 @@ sealed class SpotifyApp : IDisposable
     readonly SemaphoreSlim startLock = new(1, 1);
     Connection? conn;
     readonly System.Threading.Timer hideTimer;
-    volatile bool startedByUs;
+    // Spotify processes Maestro launched. A Spotify you start yourself is never hidden or closed.
+    volatile HashSet<uint> ourPids = [];
+    // Hiding only covers the launch (Spotify pops its window up while starting). After that the
+    // window is yours: open Spotify from the Start menu and it stays open.
+    DateTime hideUntil = DateTime.MinValue;
     volatile bool showingForLogin; // pause hiding while the user logs in
+
+    HashSet<uint>? knownRoots; // null until the first look
 
     public SpotifyApp()
     {
-        // Spotify re-shows its window now and then (e.g. on startup); keep putting it away.
-        hideTimer = new System.Threading.Timer(_ => HideWindowIfWanted(), null, 1000, 1000);
+        // A second Spotify launch only lives ~200 ms (it hands off to the running one and exits).
+        hideTimer = new System.Threading.Timer(_ => WatchWindow(), null, 100, 100);
     }
+
+    bool StartedByUs(HashSet<uint> pids) => pids.Overlaps(ourPids);
 
     static string LoadInjectScript()
     {
@@ -184,13 +192,18 @@ sealed class SpotifyApp : IDisposable
     {
         var exe = FindExe(exePath) ?? throw new AppException("NO_SPOTIFY", "Couldn't find Spotify.exe — set its path in Settings.");
         Process.Start(new ProcessStartInfo(exe, LaunchArgs) { UseShellExecute = true })?.Dispose();
-        startedByUs = true;
         var deadline = DateTime.UtcNow.AddSeconds(30);
+        hideUntil = deadline;
         while (DateTime.UtcNow < deadline)
         {
             HideWindowIfWanted();
+            ourPids = Pids();
             var targets = await Targets();
-            if (targets != null && MainPage(targets) != null) return;
+            if (targets != null && MainPage(targets) != null)
+            {
+                hideUntil = DateTime.UtcNow.AddSeconds(5);
+                return;
+            }
             await Task.Delay(300);
         }
         if (await NeedsLogin()) throw LoginError();
@@ -277,32 +290,67 @@ sealed class SpotifyApp : IDisposable
     }
 
     /// <summary>
-    /// On Maestro exit: quit Spotify if we started it (and the user wants that). Otherwise give
-    /// its window back, minimized, so it isn't left running with no window or taskbar button.
+    /// On Maestro exit: quit Spotify if Maestro started it, it's still in the background, and the
+    /// user wants that. If you opened its window, you're using it, so it stays. A Spotify that stays
+    /// gets its window back (minimized) so it's never left running invisibly.
     /// </summary>
     public void OnAppExit()
     {
         hideTimer.Change(Timeout.Infinite, Timeout.Infinite);
-        if (startedByUs && Store.GetSettings().CloseSpotifyOnExit)
+        var pids = Pids();
+        if (!StartedByUs(pids)) return;
+        var inUse = NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count > 0;
+        if (!inUse && Store.GetSettings().CloseSpotifyOnExit)
         {
             // Off the UI thread: Call's continuations would otherwise wait for the (blocked) UI thread.
             try { Task.Run(() => Call("pause")).Wait(800); } catch (AggregateException) { }
             KillAll();
             return;
         }
-        foreach (var hwnd in NativeMethods.MainWindowsOf(Pids(), onlyVisible: false))
-            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWMINNOACTIVE);
+        if (!inUse)
+            foreach (var hwnd in NativeMethods.MainWindowsOf(pids, onlyVisible: false))
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWMINNOACTIVE);
     }
 
     // ---- Spotify's window -----------------------------------------------------------------
 
     static HashSet<uint> Pids() => Processes().Select(p => { using (p) return (uint)p.Id; }).ToHashSet();
 
+    /// <summary>
+    /// Opening Spotify (Start menu, taskbar, ...) while it runs hidden only asks the hidden window
+    /// to come forward, which it can't. So watch for that launch, show the window, and from then
+    /// on Spotify is yours: Maestro won't hide it or close it.
+    /// </summary>
+    void WatchWindow()
+    {
+        if (Interlocked.Exchange(ref watching, 1) == 1) return;
+        try { WatchWindowCore(); }
+        finally { watching = 0; }
+    }
+
+    int watching;
+
+    void WatchWindowCore()
+    {
+        var roots = NativeMethods.RootProcesses("Spotify.exe");
+        var launched = knownRoots != null && roots.Except(knownRoots).Any();        knownRoots = roots;
+        if (DateTime.UtcNow <= hideUntil)
+        {
+            HideWindowIfWanted(); // our own launch
+            return;
+        }
+        if (!launched) return;
+        var pids = Pids();
+        var hidden = NativeMethods.MainWindowsOf(pids, onlyVisible: false).Count > NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count;        if (!hidden) return;
+        ourPids = [];
+        RevealWindows();
+    }
+
     void HideWindowIfWanted()
     {
         try
         {
-            if (showingForLogin || !Store.GetSettings().HideSpotify) return;
+            if (DateTime.UtcNow > hideUntil || showingForLogin || !Store.GetSettings().HideSpotify) return;
             var pids = Pids();
             if (pids.Count == 0) return;
             foreach (var hwnd in NativeMethods.MainWindowsOf(pids, onlyVisible: true)) NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
@@ -310,11 +358,10 @@ sealed class SpotifyApp : IDisposable
         catch (Exception e) when (e is IOException or InvalidOperationException) { }
     }
 
-    /// <summary>Apply the "hide Spotify" setting right away (called when it changes).</summary>
+    /// <summary>Turning "hide Spotify" off brings back the window Maestro hid; turning it on applies from the next launch.</summary>
     public void ApplyWindowSetting()
     {
-        if (Store.GetSettings().HideSpotify) HideWindowIfWanted();
-        else RevealWindows();
+        if (!Store.GetSettings().HideSpotify && StartedByUs(Pids())) RevealWindows();
     }
 
     static void RevealWindows()
@@ -366,7 +413,7 @@ sealed class SpotifyApp : IDisposable
             ["connected"] = connected,
             ["needsLogin"] = needsLogin,
             ["needsRestart"] = running && !connected && !needsLogin,
-            ["startedByMaestro"] = startedByUs,
+            ["startedByMaestro"] = StartedByUs(Pids()),
             ["autostart"] = AutostartStatus(),
         };
     }

@@ -12,17 +12,18 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Product>Maestro</Product>
     <Description>One player for Spotify and YouTube</Description>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- Needed by [LibraryImport] (the generated Win32 interop). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- Single small Maestro.exe that uses the .NET runtime already on the PC. -->
+  <!-- One Maestro.exe with .NET built in, so it runs on any Windows 10/11 PC with nothing else to install. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
+    <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
