@@ -171,6 +171,7 @@ const P = {
   repeat: ['off', 'all', 'one'].includes(saved.repeat) ? saved.repeat : 'off',
   volume: Number.isFinite(saved.volume) ? saved.volume : 80,
   muted: !!saved.muted,
+  normalize: saved.normalize !== false, // match YouTube and SoundCloud to Spotify's loudness
   unshuffled: Array.isArray(saved.unshuffled) ? saved.unshuffled : null,
   autoplay: ['off', 'same', 'both'].includes(saved.autoplay) ? saved.autoplay : 'same', // keep going with recommendations
 
@@ -195,6 +196,7 @@ function persist() {
       repeat: P.repeat,
       volume: P.volume,
       muted: P.muted,
+      normalize: P.normalize,
       unshuffled: P.unshuffled,
       autoplay: P.autoplay,
     }),
@@ -504,6 +506,19 @@ async function soundCloudStart(item, token, autoplay) {
 }
 
 // ===========================================================================
+// Volume normalizer (normalizer.js, running inside the YouTube and SoundCloud frames)
+// ===========================================================================
+
+function syncNormalizer(extra = {}) {
+  const msg = { maestroNormalizer: { enabled: P.normalize, volume: P.volume / 100, ...extra } };
+  for (const frame of [yt?.getIframe?.(), $('#scPlayer')]) frame?.contentWindow?.postMessage(msg, '*');
+}
+
+window.addEventListener('message', (e) => {
+  if (e.data?.maestroNormalizer === 'ready') syncNormalizer();
+});
+
+// ===========================================================================
 // Unified player
 // ===========================================================================
 
@@ -534,6 +549,7 @@ async function playIndex(i, { autoplay = true } = {}) {
   setNote('');
   persist();
   renderAll();
+  syncNormalizer({ newTrack: true });
 
   if (item.source === 'youtube') {
     await ytReady;
@@ -631,6 +647,7 @@ function setVolume(v) {
   }
   if (sc?.setVolume) sc.setVolume(P.muted ? 0 : P.volume);
   pushSpotifyVolume();
+  syncNormalizer();
   persist();
   renderVolume();
 }
@@ -1847,6 +1864,7 @@ async function openSettings() {
     toast(err.message, { error: true });
   }
   $('#exePathInput').placeholder = state.status?.spotify?.exe || 'Auto-detect (%APPDATA%\\Spotify\\Spotify.exe)';
+  $('#normalizeToggle').checked = P.normalize;
   const dlg = $('#settingsDialog');
   dlg.returnValue = '';
   dlg.showModal();
@@ -1993,6 +2011,11 @@ function wire() {
     else if (s?.needsLogin) api('/api/spotify/show', { method: 'POST' }).catch((err) => toast(err.message, { error: true }));
   };
   $('#restartSpotify').onclick = restartSpotify;
+  $('#normalizeToggle').onchange = (e) => {
+    P.normalize = e.target.checked;
+    syncNormalizer();
+    persist();
+  };
   $('#autostartToggle').onchange = async (e) => {
     try {
       const autostart = await api('/api/spotify/autostart', { method: 'POST', body: { enable: e.target.checked } });

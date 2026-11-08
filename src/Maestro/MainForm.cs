@@ -80,7 +80,14 @@ sealed class MainForm : Form
         {
             if (!e.Uri.StartsWith(Origin)) { e.Cancel = true; OpenExternal(e.Uri); }
         };
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(Normalizer());
         core.Navigate(Origin + "/index.html");
+    }
+
+    static string Normalizer()
+    {
+        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("normalizer.js")!;
+        return new StreamReader(s).ReadToEnd();
     }
 
     static void OpenExternal(string uri)

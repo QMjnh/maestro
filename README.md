@@ -55,7 +55,7 @@ shows its login screen, Maestro brings that window up so you can sign in.
 | **Queue** | Drag to reorder. Includes shuffle and repeat (all / one). |
 | **Autoplay** | When the queue runs low, Maestro adds recommendations so the music never stops: Spotify's song radio, YouTube's Mix, SoundCloud related tracks, or all of them interleaved (*Queue → Autoplay: Off / Same app / All apps*). Songs you add always play before autoplay's picks. |
 | **Playlists** | Stored in `%APPDATA%\Maestro\playlists.json`. Add tracks from the ⋯ menu, or drag a track onto a playlist in the sidebar. |
-| **Volume** | A single slider controls YouTube, Spotify, and SoundCloud. |
+| **Volume** | A single slider controls YouTube, Spotify, and SoundCloud. *Even out volume between sources* (Settings, on by default) measures each YouTube and SoundCloud track and turns it up or down to match Spotify's level. It settles in the first few seconds of a track. |
 | **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search |
 
 Settings has switches for *Keep Spotify's window hidden* and *Close Spotify when Maestro closes* (both on by default).
@@ -102,6 +102,7 @@ src/Maestro/
   Api.cs                the API routes the UI calls
   SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
   inject.js             the code Maestro runs inside Spotify's page
+  normalizer.js         the volume normalizer, run inside the YouTube and SoundCloud frames
   Radio.cs              autoplay and home page recommendations (Spotify song radio, YouTube Mix, SoundCloud related, or all)
   SpotifyLinks.cs       Spotify link parsing and metadata (public embed pages)
   YouTube.cs            YouTube link parsing, search, playlists
