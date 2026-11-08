@@ -39,6 +39,16 @@ static partial class SoundCloud
         return Collection(data).Select(ToTrack).OfType<Track>().Take(25).ToList();
     }
 
+    public static async Task<List<PlaylistCard>> SearchPlaylists(string q)
+    {
+        var data = await Api("search/playlists_without_albums?limit=12&q=" + Uri.EscapeDataString(q));
+        return Collection(data)
+            .Where(p => p.Num("track_count") > 0 && p.Str("permalink_url") != null && p.Num("id") != null)
+            .Select(p => new PlaylistCard("soundcloud", p.Num("id")!.Value.ToString(), p.Str("title") ?? "SoundCloud playlist", p.Str("user.username") ?? "",
+                LargeArt(p.Str("artwork_url") ?? p.Str("tracks.0.artwork_url") ?? p.Str("user.avatar_url") ?? ""), p.Str("permalink_url")!))
+            .ToList();
+    }
+
     public static async Task<List<Track>> Related(string id)
     {
         var data = await Api("tracks/" + Uri.EscapeDataString(id) + "/related?limit=25");
@@ -162,9 +172,10 @@ static partial class SoundCloud
         if (n.Str("kind") is { } k && k != "track") return null;
         if (n.Str("policy") is "BLOCK" or "SNIP") return null;
         if (n["streamable"] is JsonValue v && v.TryGetValue<bool>(out var s) && !s) return null;
-        var art = n.Str("artwork_url") ?? n.Str("user.avatar_url") ?? "";
-        if (art.Contains("-large.", StringComparison.Ordinal)) art = art.Replace("-large.", "-t500x500.");
+        var art = LargeArt(n.Str("artwork_url") ?? n.Str("user.avatar_url") ?? "");
         return new Track("soundcloud", id, n.Str("title") ?? "", n.Str("user.username") ?? "", art,
             n.Num("full_duration") ?? n.Num("duration"), n.Str("permalink_url"));
     }
+
+    static string LargeArt(string art) => art.Replace("-large.", "-t500x500.", StringComparison.Ordinal);
 }

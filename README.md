@@ -49,6 +49,7 @@ shows its login screen, Maestro brings that window up so you can sign in.
 
 | | |
 |---|---|
+| **Home** | Recommendations made from your own taste, ready to click and play: your real Spotify home feed (Daily Mixes, radios, "More like ..."), songs, mixes, and playlists from Spotify, YouTube, and SoundCloud based on the artists you play most, and what you played recently. *New picks* rotates which artists and songs they're based on. Global charts appear only until Maestro has something to go on. Your listening history stays on this computer. Hover a playlist and press play to start it, or click it to see its tracks. |
 | **Search** | Type to search Spotify, YouTube, and SoundCloud at once. Use the *All / Spotify / YouTube / SoundCloud* filter to show one source. |
 | **Paste a link** | Spotify tracks, albums, and playlists; YouTube videos and playlists; SoundCloud tracks and sets. You can play everything, add it to the queue, or save it as a Maestro playlist. |
 | **Queue** | Drag to reorder. Includes shuffle and repeat (all / one). |
@@ -101,7 +102,7 @@ src/Maestro/
   Api.cs                the API routes the UI calls
   SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
   inject.js             the code Maestro runs inside Spotify's page
-  Radio.cs              autoplay recommendations (Spotify song radio, YouTube Mix, SoundCloud related, or all)
+  Radio.cs              autoplay and home page recommendations (Spotify song radio, YouTube Mix, SoundCloud related, or all)
   SpotifyLinks.cs       Spotify link parsing and metadata (public embed pages)
   YouTube.cs            YouTube link parsing, search, playlists
   SoundCloud.cs         SoundCloud link parsing, search, related tracks

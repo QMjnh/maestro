@@ -83,6 +83,11 @@ const ICONS = {
     '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4"/>',
   repeatOne:
     '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4"/><path d="M11 10h2v6h-2z"/>',
+  home: '<path d="M12 3 3 10.5V21h6v-6h6v6h6V10.5z"/>',
+  chevronLeft: '<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/>',
+  chevronRight: '<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>',
+  refresh:
+    '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 0 0-14.3-4L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4L20 15M20 20v-5h-5"/>',
   search:
     '<path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15zM16 16l5 5"/>',
   queue: '<path d="M3 5h13v2H3zM3 11h13v2H3zM3 17h9v2H3zM17 13.5v7l5-3.5z"/>',
@@ -139,8 +144,22 @@ function itemLink(item) {
 const saved = JSON.parse(localStorage.getItem('maestro.state') || localStorage.getItem('duet.state') || '{}');
 
 const state = {
-  view: { name: 'search' },
+  view: { name: 'home' },
   playlists: [],
+  collection: null, // the playlist opened from a home page card
+  home: {
+    chart: null, // null = not loaded yet
+    featured: null,
+    mixes: null,
+    recommended: null,
+    ytPicks: null, // songs
+    scPicks: null,
+    ytLists: null, // playlists
+    scLists: null,
+    spotify: null, // your own Spotify home feed, as rows of cards
+    at: 0,
+    ...JSON.parse(localStorage.getItem('maestro.home') || '{}'),
+  },
   search: { q: '', filter: 'all', results: { spotify: null, youtube: null, soundcloud: null }, resolved: null, busy: false },
   status: null,
 };
@@ -162,6 +181,7 @@ const P = {
   position: 0,
   duration: 0,
   token: 0, // bumps on every track change to cancel stale async work
+  counted: false, // has the current play been added to the listening history?
 };
 if (P.index >= P.queue.length) P.index = P.queue.length - 1;
 
@@ -510,6 +530,7 @@ async function playIndex(i, { autoplay = true } = {}) {
   P.playing = false;
   P.position = 0;
   P.duration = item.duration || 0;
+  P.counted = false;
   setNote('');
   persist();
   renderAll();
@@ -757,6 +778,11 @@ const radio = { busy: null, failed: new Set(), gen: 0 };
 
 const autoplayOn = () => P.autoplay !== 'off' && P.repeat !== 'all';
 
+/** First credited artist. */
+function primaryArtist(item) {
+  return String(item.artist || '').split(/,|&|\s(?:feat|ft|x)\.?\s/i)[0];
+}
+
 /** Loose "same song by the same artist" key, so a song isn't recommended again (or once per service). */
 function songKey(item) {
   const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '');
@@ -769,7 +795,7 @@ function songKey(item) {
   }
   t = norm(t.replace(/\s*[([].*?[)\]]/g, '').replace(/\s(feat|ft)\.?\s.*$/i, ''));
   // First credited artist; YouTube channels look like "DaftPunkVEVO" / "Daft Punk - Topic".
-  const artist = norm(String(item.artist || '').split(/,|&|\s(?:feat|ft|x)\.?\s/i)[0]).replace(/(vevo|official|topic)$/, '');
+  const artist = norm(primaryArtist(item)).replace(/(vevo|official|topic)$/, '');
   return t && t + '|' + artist;
 }
 
@@ -852,6 +878,7 @@ async function loadPlaylists() {
     toast('Could not load playlists: ' + err.message, { error: true });
   }
   renderSidebar();
+  paintHome();
 }
 
 async function savePlaylist(pl) {
@@ -861,6 +888,7 @@ async function savePlaylist(pl) {
   else state.playlists.push(savedPl);
   renderSidebar();
   if (state.view.name === 'playlist' && state.view.id === savedPl.id) renderMain();
+  paintHome();
   return savedPl;
 }
 
@@ -1028,6 +1056,7 @@ async function refreshStatus() {
     state.status = null;
   }
   renderStatus();
+  if (state.status?.spotify?.connected && !spotifyHomeDone) loadSpotifyHome();
 }
 
 // ===========================================================================
@@ -1073,6 +1102,8 @@ function rowContext(row) {
 
 function resultList(name) {
   if (name === 'resolved') return state.search.resolved?.items || [];
+  if (name === 'collection') return state.collection?.items || [];
+  if (name?.startsWith('home:')) return homeSongs(name.slice(5));
   return state.search.results[name] || [];
 }
 
@@ -1081,7 +1112,7 @@ function onRowActivate(row, act) {
   if (!item) return;
   if (act === 'play') {
     if (ctx === 'queue') playIndex(index);
-    else if (ctx === 'playlist') playList(list, index);
+    else if (ctx === 'playlist' || list === state.collection?.items) playList(list, index);
     else playNow([item]);
   } else if (act === 'queue') {
     addToQueue([item]);
@@ -1149,32 +1180,411 @@ function openTrackMenu(rect, { ctx, index, item }) {
 // Rendering — main views
 // ===========================================================================
 
+const TRACK_EL = '.track, .song-card';
+
 function go(view) {
   state.view = view;
   renderSidebar();
   renderMain();
   $('#main').scrollTop = 0;
+  if (view.name === 'home') loadHome();
 }
 
 function renderMain() {
   const v = state.view;
-  if (v.name === 'queue') renderQueueView();
+  if (v.name === 'home') renderHomeView();
+  else if (v.name === 'queue') renderQueueView();
   else if (v.name === 'playlist') renderPlaylistView();
+  else if (v.name === 'collection') renderCollectionView();
   else renderSearchView();
 }
 
 function renderAll() {
   renderSidebar();
   renderPlayer();
-  // Avoid wiping the search box while typing.
-  if (state.view.name !== 'search') renderMain();
-  else for (const row of $$('#main .track')) row.classList.toggle('current', isRowCurrent(row));
+  // Avoid wiping the search box while typing, or the home page's scroll positions.
+  if (!['search', 'home', 'collection'].includes(state.view.name)) renderMain();
+  else for (const row of $$(`#main :is(${TRACK_EL})`)) row.classList.toggle('current', isRowCurrent(row));
 }
 
 function isRowCurrent(row) {
   const { item } = rowContext(row);
   const cur = current();
   return !!(item && cur && cur.source === item.source && cur.id === item.id);
+}
+
+// ---- home -------------------------------------------------------------------
+
+const HOME_TTL = 6 * 3600 * 1000;
+const LISTEN_MS = 15000; // a play counts once you've heard this much, so skipped and unplayable tracks don't
+const LISTENS_MAX = 200;
+const HOME_SEEDS = 5;
+
+// Newest first; one entry per song with a play count.
+const listens = JSON.parse(localStorage.getItem('maestro.listens') || '[]');
+
+function countListen() {
+  const item = current();
+  if (P.counted || !item || !P.playing || livePosition() < LISTEN_MS) return;
+  P.counted = true;
+  const i = listens.findIndex((e) => e.source === item.source && e.id === item.id);
+  const plays = i >= 0 ? listens.splice(i, 1)[0].plays : 0;
+  listens.unshift({ ...stripEntry(item), plays: plays + 1 });
+  listens.length = Math.min(listens.length, LISTENS_MAX);
+  localStorage.setItem('maestro.listens', JSON.stringify(listens));
+}
+
+/** The name to show for a song's artist; YouTube channels look like "DaftPunkVEVO" / "Daft Punk - Topic" / "Daft Punk Official". */
+function artistName(item) {
+  return primaryArtist(item).replace(/\s+-\s+Topic$|VEVO$|\s+Official$/i, '').trim();
+}
+
+/** One song each from the artists you like most: songs you've played, then your playlists and queue (worth less). */
+function homeSeeds() {
+  const pool = [
+    ...listens.slice(0, 50).map((e) => [e, e.plays * 3]),
+    ...[...P.queue.filter((e) => !e.auto), ...state.playlists.flatMap((p) => p.items)].map((e) => [e, 1]),
+  ];
+  const artists = [];
+  for (const [e, score] of pool) {
+    const name = artistName(e);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    // The same artist can be "Den" on Spotify and "Den Vau" on YouTube.
+    const a = artists.find((x) => x.key === key || x.key.startsWith(key + ' ') || key.startsWith(x.key + ' '));
+    if (!a) artists.push({ name, key, songs: [e], score });
+    else {
+      a.score += score;
+      a.songs.push(e);
+      if (key.length < a.key.length) Object.assign(a, { name, key });
+    }
+  }
+  // Your two favourites always count; the rest rotate, and so does the song, so New picks gives something new.
+  const ranked = artists.sort((a, b) => b.score - a.score);
+  return [...ranked.slice(0, 2), ...shuffled(ranked.slice(2, 12)).slice(0, HOME_SEEDS - 2)].map((a) => ({
+    name: a.name,
+    seed: a.songs[Math.floor(Math.random() * a.songs.length)],
+  }));
+}
+
+/** Nothing to go on yet: no listening, playlists, or Spotify feed. Only then do the global lists appear. */
+const homeIsCold = () => !state.home.spotify?.length && !homeSeeds().length;
+const spotifyRows = () => (state.home.spotify || []).filter((r) => !r.quick);
+
+function homeSongs(shelf) {
+  if (shelf === 'recent') return listens.slice(0, 20);
+  return state.home[shelf] || [];
+}
+
+/** Playlist cards for a shelf: your playlists and mixes carry their items; the rest load `url` when opened. */
+function homeCards(shelf) {
+  const h = state.home;
+  const noSpotify = state.status?.spotify && !state.status.spotify.exe;
+  if (shelf === 'own') {
+    return state.playlists.map((p) => ({ own: p.id, title: p.name, subtitle: `${p.items.length} track${p.items.length === 1 ? '' : 's'}`, items: p.items }));
+  }
+  if (shelf.startsWith('feed:')) return spotifyRows()[+shelf.slice(5)]?.cards || [];
+  if (shelf === 'featured') return noSpotify || !homeIsCold() ? [] : h.featured || [];
+  if (shelf === 'mixes') return h.mixes || [];
+  if (shelf === 'ytLists' || shelf === 'scLists') return h[shelf] || [];
+  // The six tiles at the top: a few of Spotify's shortcuts and your mixes, then whatever is there to fill them.
+  const shortcuts = (h.spotify || []).find((r) => r.quick)?.cards || [];
+  return [...shortcuts.slice(0, 3), ...homeCards('mixes').slice(0, 3), ...homeCards('own').filter((c) => c.items.length), ...shortcuts.slice(3), ...homeCards('featured')].slice(0, 6);
+}
+
+function paintHome() {
+  if (state.view.name === 'home') renderHomeView();
+}
+
+let homeLoading = false;
+let homeTried = false; // has a load finished this session?
+let spotifyHomeBusy = false;
+let spotifyHomeDone = false; // Spotify may still be starting when Maestro opens, so this retries once it connects
+const saveHome = () => localStorage.setItem('maestro.home', JSON.stringify(state.home));
+const resolved = new Map(); // url -> pending or finished /api/resolve, so a card only loads once
+
+async function loadHome({ force = false } = {}) {
+  const h = state.home;
+  const seeds = homeSeeds();
+  const stale = Date.now() - h.at > HOME_TTL;
+  if (homeLoading || !(force || stale || (seeds.length && !(h.mixes?.length && h.ytPicks)))) return;
+  homeLoading = true;
+  resolved.clear();
+  paintHome();
+
+  const fill = async (key, path) => {
+    try {
+      h[key] = (await api(path)).items;
+    } catch {
+      h[key] ??= [];
+    }
+    paintHome();
+  };
+  await Promise.all([
+    ...(seeds.length ? [] : [fill('chart', '/api/home/chart'), fill('featured', '/api/home/featured')]),
+    loadPlaylistPicks(seeds),
+    loadMixes(seeds),
+    loadSpotifyHome(),
+  ]);
+  homeLoading = false;
+  homeTried = true;
+  if (h.chart?.length || h.featured?.length || h.ytLists?.length || h.scLists?.length || h.mixes?.length || h.spotify?.length) h.at = Date.now();
+  saveHome();
+  paintHome();
+}
+
+async function loadSpotifyHome() {
+  if (spotifyHomeBusy) return;
+  spotifyHomeBusy = true;
+  const h = state.home;
+  try {
+    const r = await api('/api/home/spotify');
+    if (r.connected) {
+      h.spotify = r.items;
+      spotifyHomeDone = true;
+    } else h.spotify ??= [];
+  } catch {
+    h.spotify ??= [];
+    spotifyHomeDone = true;
+  }
+  spotifyHomeBusy = false;
+  saveHome();
+  paintHome();
+}
+
+// Artists are spelled differently per service ("Den Vau Official" / "denvau"), so recommendations compare titles only.
+const titleKey = (t) => songKey(t).split('|')[0];
+
+/** Take turns between lists, keeping what `keep` accepts. */
+function roundRobin(lists, keep = () => true) {
+  const all = [];
+  const longest = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < longest; i++) for (const l of lists) if (i < l.length && keep(l[i])) all.push(l[i]);
+  return all;
+}
+
+/** YouTube and SoundCloud playlists for each artist you like. */
+async function loadPlaylistPicks(seeds) {
+  const h = state.home;
+  const found = await Promise.all(seeds.map((s) => api('/api/home/playlists?q=' + encodeURIComponent(s.name)).then((r) => r.items, () => [])));
+  const seen = new Set();
+  const all = roundRobin(found, (c) => !seen.has(c.url) && seen.add(c.url));
+  if (all.length || !seeds.length) {
+    h.ytLists = all.filter((c) => c.source === 'youtube').slice(0, 24);
+    h.scLists = all.filter((c) => c.source === 'soundcloud').slice(0, 24);
+  }
+  h.ytLists ??= [];
+  h.scLists ??= [];
+  paintHome();
+}
+
+async function loadMixes(seeds) {
+  const h = state.home;
+  const picks = await Promise.all(
+    seeds.map(async ({ name, seed }) => {
+      try {
+        const q = new URLSearchParams({ source: seed.source, id: seed.id, title: seed.title, artist: seed.artist });
+        return { name, seed, ...(await api('/api/home/radio?' + q)).lists };
+      } catch {
+        return null;
+      }
+    }),
+  ).then((all) => all.filter(Boolean));
+
+  const mixes = picks
+    .map(({ name, seed, spotify, youtube, soundcloud }) => {
+      const seen = new Set();
+      const items = roundRobin([spotify, youtube, soundcloud], (t) => {
+        const key = titleKey(t) || t.source + t.id;
+        return !seen.has(key) && seen.add(key);
+      });
+      return { title: `${name} Mix`, subtitle: `Based on ${seed.title}`, items: items.slice(0, 50) };
+    })
+    .filter((m) => m.items.length);
+  if (mixes.length || !seeds.length) h.mixes = mixes;
+  else h.mixes ??= [];
+
+  // Songs you haven't played yet. A song found on two services only shows up once.
+  const taken = new Set(listens.map(titleKey));
+  const fresh = (t) => {
+    const key = titleKey(t);
+    if (key && taken.has(key)) return false;
+    if (key) taken.add(key);
+    return true;
+  };
+  const pool = { spotify: [], youtube: [], soundcloud: [] };
+  for (const t of roundRobin(picks.flatMap((p) => [p.spotify, p.youtube, p.soundcloud]), fresh)) pool[t.source].push(t);
+
+  const TOP = 8; // from each service, in the first row; the rest fill the per-service rows
+  if (picks.length || !seeds.length) {
+    h.recommended = roundRobin([pool.spotify, pool.youtube, pool.soundcloud].map((l) => l.slice(0, TOP)));
+    h.ytPicks = pool.youtube.slice(TOP, TOP + 24);
+    h.scPicks = pool.soundcloud.slice(TOP, TOP + 24);
+  }
+  h.recommended ??= [];
+  h.ytPicks ??= [];
+  h.scPicks ??= [];
+  paintHome();
+}
+
+function coverHtml(items) {
+  const arts = [...new Set(items.map((i) => i.art).filter(Boolean))];
+  if (!arts.length) return `<div class="cover empty">${icon('queue', 36)}</div>`;
+  const shown = arts.length >= 4 ? arts.slice(0, 4) : arts.slice(0, 1);
+  return `<div class="cover${shown.length > 1 ? ' collage' : ''}">${shown.map((a) => `<img src="${esc(a)}" alt="" loading="lazy" draggable="false" />`).join('')}</div>`;
+}
+
+const cardItems = (c) => c.items || [{ art: c.art }];
+const cardPlay = (c) => (c.items && !c.items.length ? '' : `<button class="card-play" data-card-play title="Play">${icon('play', 18)}<span class="spin"></span></button>`);
+
+function songCard(item, shelf, index) {
+  const cur = current();
+  const on = cur && cur.source === item.source && cur.id === item.id;
+  return `<div class="card song-card ${item.source}${on ? ' current' : ''}" data-ctx="results" data-list="home:${shelf}" data-index="${index}" draggable="true" title="${esc(item.title)}">
+    <div class="cover-wrap">${coverHtml([item])}${cardPlay(item)}</div>
+    <div class="card-title">${esc(item.title)}</div>
+    <div class="card-sub"><span class="src ${item.source}">${icon(item.source, 12)}</span><span>${esc(item.artist)}</span></div>
+  </div>`;
+}
+
+function playlistCard(c, shelf, index) {
+  return `<div class="card" data-card="${shelf}" data-index="${index}" title="${esc(c.title)}">
+    <div class="cover-wrap">${coverHtml(cardItems(c))}${cardPlay(c)}</div>
+    <div class="card-title">${esc(c.title)}</div>
+    <div class="card-sub">${c.source ? `<span class="src ${c.source}">${icon(c.source, 12)}</span>` : ''}<span>${esc(c.subtitle)}</span></div>
+  </div>`;
+}
+
+const SKELETON = '<div class="card skeleton"><div class="cover"></div><div class="card-title">&nbsp;</div><div class="card-sub">&nbsp;</div></div>'.repeat(8);
+
+/** One titled, sideways-scrolling row. Hidden when empty, and a placeholder while its first load runs. */
+function shelf(title, name, cards, { pending = false } = {}) {
+  if (!cards.length && !pending) return '';
+  return `<section class="shelf">
+    <div class="shelf-head">
+      <h2>${esc(title)}</h2>
+      <div class="shelf-nav">
+        <button class="icon-btn small" data-shelf-scroll="-1" title="Back">${icon('chevronLeft', 16)}</button>
+        <button class="icon-btn small" data-shelf-scroll="1" title="More">${icon('chevronRight', 16)}</button>
+      </div>
+    </div>
+    <div class="shelf-row" data-shelf="${name}">${cards.length ? cards.join('') : SKELETON}</div>
+  </section>`;
+}
+
+function syncShelfArrows(row) {
+  const [back, more] = $$('[data-shelf-scroll]', row.closest('.shelf'));
+  const room = row.scrollWidth - row.clientWidth;
+  back.disabled = row.scrollLeft <= 1;
+  more.disabled = row.scrollLeft >= room - 1;
+  row.closest('.shelf').classList.toggle('fits', room <= 1);
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+
+function renderHomeView() {
+  const h = state.home;
+  const main = $('#main');
+  const scrolled = new Map($$('.shelf-row', main).map((r) => [r.dataset.shelf, r.scrollLeft]));
+  const songs = (name) => homeSongs(name).map((it, i) => songCard(it, name, i));
+  const cards = (name) => homeCards(name).map((c, i) => playlistCard(c, name, i));
+  const first = (key) => homeLoading && h[key] === null;
+  const cold = homeIsCold();
+  const hasSeeds = homeSeeds().length > 0;
+  const shelves = [
+    shelf('Recommended songs', 'recommended', songs('recommended'), { pending: first('recommended') && hasSeeds }),
+    shelf('Mixes for you', 'mixes', cards('mixes'), { pending: first('mixes') && hasSeeds }),
+    shelf('YouTube picks for you', 'ytPicks', songs('ytPicks'), { pending: first('ytPicks') && hasSeeds }),
+    shelf('SoundCloud picks for you', 'scPicks', songs('scPicks'), { pending: first('scPicks') && hasSeeds }),
+    shelf('YouTube playlists for you', 'ytLists', cards('ytLists'), { pending: first('ytLists') && hasSeeds }),
+    shelf('SoundCloud playlists for you', 'scLists', cards('scLists'), { pending: first('scLists') && hasSeeds }),
+    shelf('From your Spotify', 'feed', [], { pending: first('spotify') && !!state.status?.spotify?.connected }),
+    ...spotifyRows().map((r, i) => shelf(r.title, 'feed:' + i, cards('feed:' + i))),
+    shelf('Recently played', 'recent', songs('recent')),
+    shelf('Your playlists', 'own', cards('own')),
+    cold ? shelf('Trending songs', 'chart', songs('chart'), { pending: first('chart') }) : '',
+    cold ? shelf('Popular playlists', 'featured', cards('featured'), { pending: first('featured') }) : '',
+  ].join('');
+  const quick = homeCards('quick');
+  const nothing = homeTried && !homeLoading && !quick.length && !shelves;
+
+  main.innerHTML = `
+    <div class="home">
+      <div class="home-head">
+        <h1>${greeting()}</h1>
+        <button class="btn ghost" id="homeRefresh" ${homeLoading ? 'disabled' : ''}>${icon('refresh', 16)} New picks</button>
+      </div>
+      <div class="quick-grid">${quick
+        .map(
+          (c, i) => `<div class="quick" data-card="quick" data-index="${i}" title="${esc(c.title)}">
+            ${coverHtml(cardItems(c))}<span class="quick-title">${esc(c.title)}</span>${cardPlay(c)}
+          </div>`,
+        )
+        .join('')}</div>
+      ${shelves}
+      ${nothing ? `<div class="placeholder"><h2>Couldn't load recommendations</h2><div>Check your connection, then choose New picks to try again.</div></div>` : ''}
+    </div>`;
+  for (const row of $$('.shelf-row', main)) {
+    row.scrollLeft = scrolled.get(row.dataset.shelf) || 0;
+    syncShelfArrows(row);
+  }
+}
+
+let cardSeq = 0;
+
+/** Open a playlist card, or start playing it if `play`. */
+async function activateCard(el, play) {
+  const card = homeCards(el.dataset.card)[+el.dataset.index];
+  if (!card) return;
+  if (card.own && !play) return go({ name: 'playlist', id: card.own });
+  const seq = ++cardSeq;
+  let r = { title: card.title, items: card.items };
+  if (!card.items) {
+    el.classList.add('busy');
+    try {
+      if (!resolved.has(card.url)) {
+        const url = card.url;
+        resolved.set(url, api('/api/resolve', { method: 'POST', body: { url } }).catch((err) => (resolved.delete(url), Promise.reject(err))));
+      }
+      r = await resolved.get(card.url);
+    } catch (err) {
+      el.classList.remove('busy');
+      if (seq === cardSeq) toast(err.message, { error: true, ms: 5000 });
+      return;
+    }
+    el.classList.remove('busy');
+    if (seq !== cardSeq) return;
+  }
+  if (!r.items.length) return toast('No playable tracks found in that playlist.', { error: true });
+  if (play) return playList(r.items, 0);
+  state.collection = { ...r, title: card.title };
+  go({ name: 'collection' });
+}
+
+function renderCollectionView() {
+  const c = state.collection;
+  if (!c) return go({ name: 'home' });
+  $('#main').innerHTML = `
+    <div class="view-head">
+      <h1>${esc(c.title)}</h1>
+      <div class="sub">${c.items.length} tracks${c.truncated ? ' (first 100)' : ''} · ${totalDuration(c.items)} · ${sourceSummary(c.items)}</div>
+      <div class="actions">
+        <button class="btn primary" id="cPlay">${icon('play', 16)} Play</button>
+        <button class="btn ghost" id="cShuffle">${icon('shuffle', 16)} Shuffle</button>
+        <button class="btn ghost" id="cQueue">Add to queue</button>
+        <button class="btn ghost" id="cSave">Save as playlist</button>
+      </div>
+    </div>
+    <div class="view-body">
+      <ul class="tracks" data-list="collection">${c.items.map((it, i) => trackRow(it, { ctx: 'results', index: i, numbered: true })).join('')}</ul>
+    </div>`;
+  $('#cPlay').onclick = () => playList(c.items, 0);
+  $('#cShuffle').onclick = () => playList(c.items, 0, { shuffle: true });
+  $('#cQueue').onclick = () => (addToQueue(c.items), toast(`Added ${c.items.length} tracks to queue`));
+  $('#cSave').onclick = () => createPlaylist(c.items, c.title);
 }
 
 // ---- search ---------------------------------------------------------------
@@ -1359,7 +1769,7 @@ function upcomingGroups(after) {
 
 function renderPlaylistView() {
   const pl = state.playlists.find((p) => p.id === state.view.id);
-  if (!pl) return go({ name: 'search' });
+  if (!pl) return go({ name: 'home' });
   $('#main').innerHTML = `
     <div class="view-head">
       <h1>${esc(pl.name)}</h1>
@@ -1390,7 +1800,7 @@ function renderPlaylistView() {
     if (!(await confirmDialog('Delete playlist?', `“${pl.name}” will be removed. The songs stay on Spotify, YouTube, and SoundCloud.`, 'Delete'))) return;
     await api('/api/playlists/' + pl.id, { method: 'DELETE' });
     state.playlists = state.playlists.filter((p) => p.id !== pl.id);
-    go({ name: 'search' });
+    go({ name: 'home' });
   };
 }
 
@@ -1467,7 +1877,7 @@ function setupDragAndDrop() {
   const main = $('#main');
 
   document.addEventListener('dragstart', (e) => {
-    const row = e.target.closest?.('.track');
+    const row = e.target.closest?.(TRACK_EL);
     if (!row) return;
     const { ctx, index, item } = rowContext(row);
     if (!item) return;
@@ -1630,6 +2040,16 @@ function wire() {
       else renderSearchBody();
       return;
     }
+    if (e.target.closest('#homeRefresh')) return loadHome({ force: true });
+    const arrow = e.target.closest('[data-shelf-scroll]');
+    if (arrow) {
+      const row = $('.shelf-row', arrow.closest('.shelf'));
+      return row.scrollBy({ left: +arrow.dataset.shelfScroll * row.clientWidth * 0.9, behavior: 'smooth' });
+    }
+    const card = e.target.closest('[data-card]');
+    if (card) return activateCard(card, !!e.target.closest('[data-card-play]'));
+    const song = e.target.closest('.song-card');
+    if (song) return onRowActivate(song, 'play');
     if (e.target.closest('[data-open-settings]')) return openSettings();
     if (e.target.closest('[data-restart-spotify]')) {
       return restartSpotify().then((ok) => ok && state.search.q && runSearch(state.search.q));
@@ -1642,8 +2062,9 @@ function wire() {
     const row = e.target.closest('.track');
     if (row && !e.target.closest('[data-act]')) onRowActivate(row, 'play');
   });
+  main.addEventListener('scroll', (e) => e.target.classList?.contains('shelf-row') && syncShelfArrows(e.target), true);
   main.addEventListener('contextmenu', (e) => {
-    const row = e.target.closest('.track');
+    const row = e.target.closest(TRACK_EL);
     if (!row) return;
     e.preventDefault();
     const { ctx, index, item } = rowContext(row);
@@ -1660,7 +2081,10 @@ function wire() {
     if (!e.target.closest('#menu')) closeMenu();
   });
   window.addEventListener('blur', closeMenu);
-  window.addEventListener('resize', closeMenu);
+  window.addEventListener('resize', () => {
+    closeMenu();
+    $$('.shelf-row').forEach(syncShelfArrows);
+  });
 
   // Keyboard
   document.addEventListener('keydown', (e) => {
@@ -1701,11 +2125,12 @@ function boot() {
   loadSoundCloud();
   renderAll();
   renderMain();
-  loadPlaylists();
-  refreshStatus();
+  loadPlaylists().then(() => loadHome());
+  refreshStatus().then(paintHome);
   setInterval(() => P.engine !== 'spotify' && refreshStatus(), 15000);
   setInterval(() => {
     if (P.loaded && !dragging) renderProgress();
+    countListen();
   }, 250);
 
   // Restore the last track (cued, not playing).
@@ -1714,6 +2139,7 @@ function boot() {
   // Deep link: /?q=some+song
   const q = new URLSearchParams(location.search).get('q');
   if (q) {
+    go({ name: 'search' });
     $('#q').value = q;
     runSearch(q);
   }

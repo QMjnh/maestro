@@ -72,14 +72,50 @@ sealed class Api(SpotifyApp spotify)
                 return new { items };
             }
 
+            // Home page shelves. These load without being asked, so none of them may start Spotify.
+            case ("GET", "/api/home/radio"):
+            {
+                var source = query["source"];
+                var id = query["id"] ?? "";
+                if (source is not ("spotify" or "youtube" or "soundcloud") || id.Length == 0) throw new BadRequest("source and id are required");
+                return new { lists = await radio.ForHome(source, id, query["title"] ?? "", query["artist"] ?? "", settings) };
+            }
+
+            case ("GET", "/api/home/spotify"):
+                try
+                {
+                    return new { connected = true, items = await spotify.Call("home") };
+                }
+                catch (AppException e) when (e.Code == "NOT_CONNECTED")
+                {
+                    return new { connected = false, items = (JsonNode?)new JsonArray() };
+                }
+
+            case ("GET", "/api/home/chart"):
+                return new { items = await YouTube.Chart(settings.YoutubeApiKey) };
+
+            case ("GET", "/api/home/featured"):
+                return new { items = await SpotifyLinks.Featured() };
+
+            case ("GET", "/api/home/playlists"):
+                return new { items = await Radio.PlaylistsLike(query["q"] ?? "") };
+
             // Turn a pasted link into playable items.
             case ("POST", "/api/resolve"):
             {
                 var url = Body().Str("url") ?? "";
                 if (SpotifyLinks.ParseUrl(url) is { } sp)
                 {
-                    var (title, items, truncated) = await SpotifyLinks.Resolve(sp.Kind, sp.Id);
-                    return new { title, items, truncated };
+                    try
+                    {
+                        var (title, items, truncated) = await SpotifyLinks.Resolve(sp.Kind, sp.Id);
+                        return new { title, items, truncated };
+                    }
+                    // Private lists like "Your Top Songs" have no public page, but the signed-in app can read them.
+                    catch (UpstreamException) when (sp.Kind == "playlist")
+                    {
+                        return await spotify.Call("contents", "spotify:playlist:" + sp.Id);
+                    }
                 }
                 if (YouTube.ParseUrl(url) is { } yt)
                 {

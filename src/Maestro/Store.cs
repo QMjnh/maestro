@@ -8,6 +8,9 @@ record Track(string Source, string Id, string Title, string Artist, string Art, 
 
 record Playlist(string Id, string Name, List<Track> Items, long UpdatedAt, long CreatedAt);
 
+/// <summary>A playlist on another service, shown as a home page card. Opening it resolves <c>Url</c> like a pasted link.</summary>
+record PlaylistCard(string Source, string Id, string Title, string Subtitle, string Art, string Url);
+
 /// <summary>Settings and playlists, stored as JSON in %APPDATA%\Maestro.</summary>
 static class Store
 {

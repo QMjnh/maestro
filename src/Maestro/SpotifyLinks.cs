@@ -15,6 +15,23 @@ static partial class SpotifyLinks
     [GeneratedRegex(@"<script id=""__NEXT_DATA__"" type=""application/json"">(.*?)</script>", RegexOptions.Singleline)]
     private static partial Regex NextData();
 
+    // Spotify's own editorial playlists, shown on the home page.
+    static readonly string[] FeaturedIds =
+    [
+        "37i9dQZF1DXcBWIGoYBM5M", // Today's Top Hits
+        "37i9dQZF1DX0XUsuxWHRQd", // RapCaviar
+        "37i9dQZF1DWXRqgorJj26U", // Rock Classics
+        "37i9dQZF1DX10zKzsJ2jva", // Viva Latino
+        "37i9dQZF1DX4dyzvuaRJ0n", // mint
+        "37i9dQZF1DX9tPFwDMOaN1", // K-Pop ON!
+        "37i9dQZF1DWWQRwui0ExPn", // lofi beats
+        "37i9dQZF1DWZeKCadgRdKQ", // Deep Focus
+        "37i9dQZF1DX4sWSpwq3LiO", // Peaceful Piano
+        "37i9dQZF1DX76Wlfdnj7AP", // Beast Mode
+        "37i9dQZF1DX2sUQwD7tbmL", // Feel-Good Indie Rock
+        "37i9dQZF1DX4o1oenSJRJd", // All Out 2000s
+    ];
+
     /// <summary>Parse open.spotify.com links and spotify: URIs.</summary>
     public static (string Kind, string Id)? ParseUrl(string input)
     {
@@ -34,6 +51,25 @@ static partial class SpotifyLinks
             .ToList();
         if (list.Count == 0) return "";
         return list.FirstOrDefault(i => i.Width <= 300 && i.Width > 0).Url is { Length: > 0 } small ? small : list[0].Url;
+    }
+
+    /// <summary>Cards for the featured playlists. One that can't be read is left out.</summary>
+    public static async Task<List<PlaylistCard>> Featured()
+    {
+        var cards = await Task.WhenAll(FeaturedIds.Select(Card));
+        return cards.OfType<PlaylistCard>().ToList();
+
+        static async Task<PlaylistCard?> Card(string id)
+        {
+            try
+            {
+                var (title, items, _) = await Resolve("playlist", id);
+                if (items.Count == 0) return null;
+                var artists = string.Join(", ", items.Select(t => t.Artist).Distinct().Take(3));
+                return new PlaylistCard("spotify", id, title, artists, items[0].Art, "https://open.spotify.com/playlist/" + id);
+            }
+            catch (Exception e) when (e is UpstreamException or HttpRequestException or TaskCanceledException) { return null; }
+        }
     }
 
     public static async Task<(string Title, List<Track> Items, bool Truncated)> Resolve(string kind, string id)

@@ -96,7 +96,31 @@ static partial class YouTube
         return await VideosApi(ids, apiKey);
     }
 
+    /// <summary>Playlists matching a search. YouTube's auto-generated Mixes ("RD...") are left out because they can't be imported.</summary>
+    public static async Task<List<PlaylistCard>> SearchPlaylists(string q)
+    {
+        var html = await Net.GetText("https://www.youtube.com/results?sp=EgIQAw%253D%253D&search_query=" + Uri.EscapeDataString(q), ConsentCookie);
+        var data = Net.ExtractJson(html, InitialData()) ?? throw new UpstreamException("Could not read YouTube search results (page format changed?)");
+        return Net.FindAll(data, "lockupViewModel")
+            .Where(l => l.Str("contentType") == "LOCKUP_CONTENT_TYPE_PLAYLIST" && l.Str("contentId") is { } id && !id.StartsWith("RD", StringComparison.Ordinal))
+            .Take(12)
+            .Select(l =>
+            {
+                var id = l.Str("contentId")!;
+                var meta = l.At("metadata.lockupMetadataViewModel");
+                return new PlaylistCard("youtube", id, meta.Str("title.content") ?? "YouTube playlist",
+                    meta.Str("metadata.contentMetadataViewModel.metadataRows.0.metadataParts.0.text.content") ?? "",
+                    l.Str("contentImage.collectionThumbnailViewModel.primaryThumbnail.thumbnailViewModel.image.sources.0.url") ?? "",
+                    "https://www.youtube.com/playlist?list=" + id);
+            })
+            .ToList();
+    }
+
     // ---- recommendations ------------------------------------------------------
+
+    const string TopSongsChart = "PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i"; // YouTube Music's "Top 100 Songs Global"
+
+    public static async Task<List<Track>> Chart(string apiKey) => (await Playlist(TopSongsChart, apiKey)).Items.Take(30).ToList();
 
     /// <summary>The YouTube "Mix" for a video (what YouTube autoplays after it), without the video itself.</summary>
     public static async Task<List<Track>> Mix(string id)

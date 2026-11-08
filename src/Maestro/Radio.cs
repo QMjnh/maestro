@@ -4,9 +4,9 @@ using System.Text.RegularExpressions;
 namespace Maestro;
 
 /// <summary>
-/// Recommendations for autoplay: Spotify's song radio, YouTube's Mix, and SoundCloud related
-/// tracks. In "both" mode the same song is looked up on the other services too, and the lists
-/// are interleaved.
+/// Recommendations for autoplay and the home page: Spotify's song radio, YouTube's Mix, and
+/// SoundCloud related tracks. In "both" mode the same song is looked up on the other services
+/// too, and the lists are interleaved.
 /// </summary>
 sealed partial class Radio(SpotifyApp spotify)
 {
@@ -29,6 +29,48 @@ sealed partial class Radio(SpotifyApp spotify)
             catch (Exception e) when (e is AppException or UpstreamException or HttpRequestException or TaskCanceledException) { rest.Add([]); }
         }
         return Interleave([a, .. rest]);
+    }
+
+    /// <summary>
+    /// Home page picks for a song from every service, whichever one the song is on. The home page
+    /// loads without being asked, so this never starts Spotify, and a service that fails comes back empty.
+    /// </summary>
+    public async Task<Dictionary<string, List<Track>>> ForHome(string source, string id, string title, string artist, Store.Settings settings)
+    {
+        var tasks = Sources.ToDictionary(s => s, s => s switch
+        {
+            "spotify" => source == s ? ConnectedRadio(id) : ConnectedSpotifyLike(title, artist),
+            _ => source == s ? Native(s, id, settings) : Like(s, title, artist, settings),
+        });
+        var lists = new Dictionary<string, List<Track>>();
+        foreach (var (s, task) in tasks)
+        {
+            try { lists[s] = await task; }
+            catch (Exception) { lists[s] = []; }
+        }
+        return lists;
+    }
+
+    async Task<List<Track>> ConnectedRadio(string id) =>
+        (await spotify.Call("radio", "spotify:track:" + id)).Deserialize<List<Track>>(Store.Json) ?? [];
+
+    async Task<List<Track>> ConnectedSpotifyLike(string title, string artist)
+    {
+        var hits = (await spotify.Call("search", Query(title, artist), 1)).Deserialize<List<Track>>(Store.Json) ?? [];
+        return hits.Count == 0 ? [] : await ConnectedRadio(hits[0].Id);
+    }
+
+    /// <summary>YouTube and SoundCloud playlists matching a search, interleaved. A service that fails is left out.</summary>
+    public static async Task<List<PlaylistCard>> PlaylistsLike(string q)
+    {
+        var tasks = new[] { YouTube.SearchPlaylists(q), SoundCloud.SearchPlaylists(q) };
+        var lists = new List<List<PlaylistCard>>();
+        foreach (var task in tasks)
+        {
+            try { lists.Add(await task); }
+            catch (Exception e) when (e is AppException or UpstreamException or HttpRequestException or TaskCanceledException) { lists.Add([]); }
+        }
+        return Interleave(lists);
     }
 
     Task<List<Track>> Native(string source, string id, Store.Settings settings) => source switch
@@ -85,11 +127,11 @@ sealed partial class Radio(SpotifyApp spotify)
         return q.Trim();
     }
 
-    static List<Track> Interleave(IReadOnlyList<List<Track>> lists)
+    static List<T> Interleave<T>(IReadOnlyList<List<T>> lists)
     {
         var max = 0;
         foreach (var l in lists) if (l.Count > max) max = l.Count;
-        var all = new List<Track>(lists.Sum(l => l.Count));
+        var all = new List<T>(lists.Sum(l => l.Count));
         for (int i = 0; i < max; i++)
             foreach (var l in lists)
                 if (i < l.Count) all.Add(l[i]);
