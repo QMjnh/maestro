@@ -124,6 +124,55 @@ svg { display: block; }
 .placeholder h2 { color: var(--text); margin: 0 0 8px; font-size: 18px; }
 .placeholder .tips { display: inline-grid; text-align: left; gap: 6px; margin-top: 12px; font-size: 13px; }
 
+/* ---- home -------------------------------------------------------------- */
+.home { padding: 20px 16px 32px; background: linear-gradient(#232a35, transparent 260px); min-height: 100%; }
+.home-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px; }
+.home-head h1 { margin: 0; font-size: 28px; }
+.home-head .btn:disabled { opacity: .45; pointer-events: none; }
+.quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; padding: 16px 8px 4px; }
+.quick-grid:empty { display: none; }
+.quick { display: flex; align-items: center; gap: 12px; background: #ffffff14; border-radius: 6px; overflow: hidden; cursor: pointer; position: relative; height: 56px; }
+.quick:hover { background: #ffffff26; }
+.quick .cover { width: 56px; height: 56px; border-radius: 0; flex: none; aspect-ratio: auto; }
+.quick-title { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
+.quick .card-play { position: static; flex: none; margin-right: 10px; width: 36px; height: 36px; display: none; opacity: 1; transform: none; }
+.quick:hover .card-play, .quick.busy .card-play { display: grid; }
+
+.shelf { margin-top: 22px; }
+.shelf-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px; }
+.shelf-head h2 { margin: 0; font-size: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-nav { display: flex; gap: 4px; flex: none; }
+.shelf.fits .shelf-nav { display: none; }
+.shelf-row { display: grid; grid-auto-flow: column; grid-auto-columns: 156px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+
+.card { padding: 8px; border-radius: 8px; cursor: pointer; min-width: 0; scroll-snap-align: start; }
+.card:hover { background: var(--panel-2); }
+.cover-wrap { position: relative; }
+.cover { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--panel-2); display: grid; place-items: center; color: var(--dim); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover img[src*="/hqdefault."] { object-view-box: inset(12.5% 0); } /* YouTube letterboxes these */
+.cover.collage { grid-template: 1fr 1fr / 1fr 1fr; }
+.cover.collage img { min-height: 0; }
+.card-play { position: absolute; right: 8px; bottom: 8px; width: 42px; height: 42px; border-radius: 50%; background: var(--text); color: #000; display: grid; place-items: center; opacity: 0; transform: translateY(6px); transition: opacity .12s, transform .12s; box-shadow: 0 6px 16px #0008; }
+.card:hover .card-play, .card.busy .card-play { opacity: 1; transform: none; }
+.card-play:hover { transform: scale(1.06) !important; }
+.card-play .spin { display: none; width: 18px; height: 18px; border: 2px solid #0004; border-top-color: #000; border-radius: 50%; animation: spin .8s linear infinite; }
+.busy > .card-play svg, .busy .cover-wrap .card-play svg { display: none; }
+.busy > .card-play .spin, .busy .cover-wrap .card-play .spin { display: block; }
+.card-title { font-weight: 600; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-sub { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; min-width: 0; }
+.card-sub > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src { flex: none; }
+.src.spotify { color: var(--spotify); }
+.src.youtube { color: var(--youtube); }
+.src.soundcloud { color: var(--soundcloud); }
+.song-card.current .card-title { color: var(--spotify); }
+.song-card.current.youtube .card-title { color: var(--youtube); }
+.song-card.current.soundcloud .card-title { color: var(--soundcloud); }
+.song-card.dragging { opacity: .4; }
+.skeleton { pointer-events: none; animation: pulse 1.2s ease-in-out infinite; }
+.skeleton .card-title, .skeleton .card-sub { background: var(--panel-2); border-radius: 4px; margin-top: 8px; }
+
 /* ---- track rows -------------------------------------------------------- */
 .tracks { list-style: none; margin: 0; padding: 0; }
 .track { display: grid; grid-template-columns: 28px 44px minmax(0, 1fr) auto 48px; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 8px; position: relative; }

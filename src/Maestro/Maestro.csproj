@@ -44,6 +44,7 @@
     <!-- The UI and the Spotify-side script ship inside the exe. -->
     <EmbeddedResource Include="wwwroot\**\*" LogicalName="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="inject.js" LogicalName="inject.js" />
+    <EmbeddedResource Include="normalizer.js" LogicalName="normalizer.js" />
     <EmbeddedResource Include="maestro.ico" LogicalName="maestro.ico" />
   </ItemGroup>
 

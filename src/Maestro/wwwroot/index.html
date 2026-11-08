@@ -12,6 +12,7 @@
       <aside class="sidebar">
         <div class="brand"><img src="icon.png" alt="" /> Maestro</div>
         <nav class="nav">
+          <button class="nav-item" data-view="home"><span data-icon="home"></span>Home</button>
           <button class="nav-item" data-view="search"><span data-icon="search"></span>Search</button>
           <button class="nav-item" data-view="queue"><span data-icon="queue"></span>Queue <span class="count" id="queueCount"></span></button>
         </nav>
@@ -74,6 +75,14 @@
     <dialog class="modal" id="settingsDialog">
       <form method="dialog" id="settingsForm">
         <h2>Settings</h2>
+
+        <section>
+          <h3>Playback</h3>
+          <label class="check">
+            <input type="checkbox" id="normalizeToggle" />
+            <span>Even out volume between sources<br /><span class="opt">Turns YouTube and SoundCloud tracks up or down to match Spotify's level. Keep "Normalize volume" on in Spotify, at the Normal level.</span></span>
+          </label>
+        </section>
 
         <section>
           <h3><span class="dot spotify"></span>Spotify</h3>
