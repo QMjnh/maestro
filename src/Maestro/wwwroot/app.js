@@ -549,7 +549,7 @@ async function playIndex(i, { autoplay = true } = {}) {
   setNote('');
   persist();
   renderAll();
-  syncNormalizer({ newTrack: true });
+  syncNormalizer({ newTrack: item.id });
 
   if (item.source === 'youtube') {
     await ytReady;
