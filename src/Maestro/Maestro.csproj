@@ -13,6 +13,7 @@
     <Product>Maestro</Product>
     <Description>One player for Spotify, YouTube, and SoundCloud</Description>
     <Version>0.0.2</Version>
+    <PackageLicenseExpression>BUSL-1.1</PackageLicenseExpression>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- Needed by [LibraryImport] (the generated Win32 interop). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

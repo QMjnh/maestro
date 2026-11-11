@@ -1,0 +1,53 @@
+# Maestro
+
+> Universal music streaming aggregator app for Windows combining Spotify, YouTube, and SoundCloud into one player. Free for personal, noncommercial use under BUSL 1.1.
+
+Maestro is a desktop music aggregator that unifies Spotify, YouTube, and SoundCloud into a single interface. Users can search across all three platforms simultaneously, paste links from any of the three services, and mix tracks into a single unified queue or playlist with automatic playback handoffs and volume normalization.
+
+- **Primary Repository**: <https://github.com/QMjnh/maestro>
+- **Website & Documentation**: <https://qmjnh.github.io/maestro/>
+- **Platform**: Windows 10 / Windows 11 (64-bit)
+- **License**: Business Source License 1.1 (BUSL-1.1) — free for personal, noncommercial use; production use by a business requires a separate license; each release converts to GPL-2.0-or-later four years after its release. See the LICENSE file in the repository.
+- **Cost**: Free. No API keys, developer accounts, or subscriptions required; works with free Spotify accounts.
+- **Last updated**: 2026-11-10
+
+## Key Capabilities & Features
+
+- **Multi-Service Music Aggregation**: Aggregates music streams and search catalogs from Spotify, YouTube, and SoundCloud into one desktop application.
+- **Unified Multi-Source Search**: Type a search query once to retrieve results side-by-side across Spotify, YouTube, and SoundCloud, with filters to narrow down to individual platforms.
+- **Combined Universal Queue**: Build playlists and playback queues that seamlessly mix Spotify tracks, YouTube videos, and SoundCloud songs. Maestro automatically transitions from one service to another as tracks finish.
+- **Cross-Service Volume Normalization**: Built-in audio leveler measures YouTube and SoundCloud tracks in real time and balances their perceived volume to match Spotify's level.
+- **Smart Recommendations & Autoplay**: Combines Spotify song radio, YouTube Mixes, and SoundCloud related tracks to continue playing personalized music when the user's queue ends.
+- **Link Resolver**: Paste any Spotify song/album/playlist link, YouTube video/playlist URL, or SoundCloud track/set URL to play instantly or import up to 100 tracks.
+- **Zero Configuration**: No developer accounts, Spotify Premium subscription, or API keys needed.
+
+## Common Questions
+
+### What is Maestro?
+Maestro is a universal music aggregator application for Windows that merges music from Spotify, YouTube, and SoundCloud into one player.
+
+### What does a music streaming aggregator app do?
+It connects several streaming services in one player, so you can search their catalogs side by side, queue tracks from any of them together, and play everything from a single window. Maestro does this for Spotify, YouTube, and SoundCloud.
+
+### Can you combine Spotify and YouTube into one playlist or queue?
+Yes. Maestro allows users to paste Spotify playlists and YouTube links into a single shared queue or playlist and seamlessly plays them in sequence.
+
+### Does Maestro require Spotify Premium?
+No. Maestro controls the local Spotify desktop app via Chrome DevTools Protocol (`--remote-debugging-port`), meaning free-tier Spotify accounts work without issue.
+
+### How do I install Maestro?
+Run the following command in Windows PowerShell:
+```powershell
+irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
+```
+
+## Technical Architecture
+
+- **UI Layer**: Microsoft Edge WebView2 hosting a responsive modern HTML5/CSS/JavaScript client embedded directly within the executable.
+- **Backend**: Native .NET C# desktop application handling in-process API endpoints without requiring an external web server or open network ports.
+- **Spotify Bridge**: Chrome DevTools Protocol (CDP) connection to local Spotify client with injected JavaScript for playback controls and track metadata.
+- **YouTube & SoundCloud Drivers**: Embedded HTML5 web frames with custom volume normalization scripts running via audio context hooks.
+
+## See Also
+- [README — full feature list, install guide, and project structure](https://github.com/QMjnh/maestro#readme)
+- [GitHub Repository & Issue Tracker](https://github.com/QMjnh/maestro)
