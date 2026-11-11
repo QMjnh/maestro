@@ -302,7 +302,9 @@ async function spotifyControl(action, extra = {}) {
   }
 }
 
-const spotifyVolume = () => (P.muted ? 0 : P.volume / 100);
+// Spotify's volume is steep (measured: 0.75 is -12.5 dB, about v^5), while YouTube's and SoundCloud's are linear.
+// This gives all three the same drop for the same slider position.
+const spotifyVolume = () => (P.muted ? 0 : Math.pow(P.volume / 100, 1 / 5));
 
 async function spotifyStart(item, token) {
   spotifyStop();
@@ -515,7 +517,8 @@ function syncNormalizer(extra = {}) {
 }
 
 window.addEventListener('message', (e) => {
-  if (e.data?.maestroNormalizer === 'ready') syncNormalizer();
+  // A frame that loads after the track started missed its newTrack message.
+  if (e.data?.maestroNormalizer === 'ready') syncNormalizer({ newTrack: current()?.id });
 });
 
 // ===========================================================================
@@ -549,7 +552,7 @@ async function playIndex(i, { autoplay = true } = {}) {
   setNote('');
   persist();
   renderAll();
-  syncNormalizer({ newTrack: true });
+  syncNormalizer({ newTrack: item.id });
 
   if (item.source === 'youtube') {
     await ytReady;

@@ -11,7 +11,13 @@
   const MIN_GAIN = -18; // dB
   const MAX_GAIN = 9; // dB; quieter tracks stay a little quiet instead of being pushed into the limiter
   const BLOCK_MS = 350; // about the length of the analyser window, so each block is new audio
-  const SETTLE_BLOCKS = 10; // about 3.5 s of sound before trusting a track's own measurement
+  const FAST_BLOCKS = 3; // about 1 s of sound, enough to know a track is too loud
+  const SETTLE_BLOCKS = 10; // about 3.5 s of sound before trusting a track's own measurement enough to boost it
+  const RECENT_BLOCKS = 9; // about 3 s
+  const LOUD_MARGIN = 6; // LU; how far above the target a passage may go before it's turned down right away
+  const NEW_TRACK_MS = 1000; // the previous track can still be playing for a moment after a change
+  const SCAN_SEGMENTS = 8; // pieces of a SoundCloud track to sample, spread over its whole length
+  const LIMITER_MAKEUP = 0.57; // dB; Chromium's compressor always adds this much for these settings
   const MAX_BLOCKS = 6000; // about 35 min; long mixes are measured over their most recent part
   const PRIOR_KEY = 'maestro.normalizer.prior';
 
@@ -26,7 +32,13 @@
   let blocks = []; // loudness of each measured block of this track, as linear power
   let prior = Number(localStorage.getItem(PRIOR_KEY)) || 0; // what recent tracks needed, for the seconds before this one is known
   let gainDb = prior;
-  let applied = fromDb(prior); // the gain last sent to the audio graph
+  let applied = 1; // the gain last sent to the audio graph
+  let trackId = null;
+  let listenFrom = 0; // when to start measuring the current track
+  let scanId = 0; // bumps on every track change to cancel a scan of the previous track
+  let scanStarted = false;
+  let scannedLufs = null; // the whole track's loudness, once sampled
+  let wholeTrackKnown = false; // this track's gain came from its whole length, not just the part heard so far
 
   // SoundCloud's player builds its own audio graph, and an element can only have one source node. So the takeover point
   // is the last step instead: whatever a page connects to the speakers gets sent through the normalizer.
@@ -74,11 +86,27 @@
     }
   }
 
+  const wire = (...nodes) => nodes.slice(1).forEach((n, i) => nativeConnect.call(nodes[i], n));
+
+  // ITU BS.1770 K-weighting, the filter behind LUFS: bass counts less, treble counts more.
+  function kWeighting(context) {
+    const highpass = context.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 38.13;
+    highpass.Q.value = -6.02; // a Q of 0.5, which Web Audio takes in dB for this filter type
+    highpass.channelCount = 2;
+    highpass.channelCountMode = 'explicit';
+    const shelf = context.createBiquadFilter();
+    shelf.type = 'highshelf';
+    shelf.frequency.value = 1681.97;
+    shelf.gain.value = 4;
+    return [highpass, shelf];
+  }
+
   function buildChain() {
-    const wire = (...nodes) => nodes.slice(1).forEach((n, i) => nativeConnect.call(nodes[i], n));
     const input = ctx.createGain();
     const gain = ctx.createGain();
-    gain.gain.value = fromDb(gainDb);
+    applied = gain.gain.value = fromDb(gainDb - LIMITER_MAKEUP);
     // Catches the peaks of tracks that get boosted.
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -1;
@@ -88,17 +116,7 @@
     limiter.release.value = 0.25;
     wire(input, gain, limiter, ctx.destination);
 
-    // ITU BS.1770 K-weighting, the filter behind LUFS: bass counts less, treble counts more.
-    const highpass = ctx.createBiquadFilter();
-    highpass.type = 'highpass';
-    highpass.frequency.value = 38.13;
-    highpass.Q.value = 0.5;
-    highpass.channelCount = 2;
-    highpass.channelCountMode = 'explicit';
-    const shelf = ctx.createBiquadFilter();
-    shelf.type = 'highshelf';
-    shelf.frequency.value = 1681.97;
-    shelf.gain.value = 4;
+    const [highpass, shelf] = kWeighting(ctx);
     const splitter = ctx.createChannelSplitter(2);
     const meters = [ctx.createAnalyser(), ctx.createAnalyser()];
     wire(input, highpass, shelf, splitter);
@@ -128,17 +146,103 @@
     route();
   }
 
-  function integratedLufs() {
-    const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    const relative = mean(blocks) * 0.1; // ignore blocks 10 LU below the average: silences and fade-outs
-    return -0.691 + 10 * Math.log10(mean(blocks.filter((p) => p >= relative)));
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const toLufs = (power) => -0.691 + 10 * Math.log10(power);
+
+  function integratedLufs(powers = blocks) {
+    const relative = mean(powers) * 0.1; // ignore blocks 10 LU below the average: silences and fade-outs
+    return toLufs(mean(powers.filter((p) => p >= relative)));
   }
 
-  function applyGain(seconds) {
+  // The loudness of each 400 ms of decoded audio, as linear power.
+  async function blockPowers(buffer) {
+    const offline = new OfflineAudioContext(2, buffer.length, buffer.sampleRate);
+    const source = offline.createBufferSource();
+    source.buffer = buffer;
+    const [highpass, shelf] = kWeighting(offline);
+    wire(source, highpass, shelf, offline.destination);
+    source.start();
+    const rendered = await offline.startRendering();
+    const channels = [rendered.getChannelData(0), rendered.getChannelData(1)];
+    const size = Math.round(rendered.sampleRate * 0.4);
+    const powers = [];
+    for (let start = 0; start + size <= rendered.length; start += size) {
+      let power = 0;
+      for (const data of channels) {
+        let sum = 0;
+        for (let i = start; i < start + size; i++) sum += data[i] * data[i];
+        power += sum / size;
+      }
+      powers.push(power);
+    }
+    return powers;
+  }
+
+  // SoundCloud publishes no loudness figure, and a track's opening says little about the rest of it. Its stream comes in
+  // small segments, so a few from across the whole track give a true average before most of the track has played.
+  async function scanTrack(playlistUrl) {
+    const id = scanId;
+    const bytesOf = async (url) => new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const playlist = await (await fetch(playlistUrl)).text();
+    const resolve = (url) => new URL(url, playlistUrl).href;
+    const initUrl = /#EXT-X-MAP:URI="([^"]+)"/.exec(playlist)?.[1];
+    const init = initUrl ? await bytesOf(resolve(initUrl)) : new Uint8Array();
+    const segments = playlist.split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+    const picks = new Set(Array.from({ length: SCAN_SEGMENTS }, (_, i) => Math.floor(((i + 0.5) * segments.length) / SCAN_SEGMENTS)));
+    const decoder = new OfflineAudioContext(2, 1, 48000);
+    const powers = [];
+    for (const pick of picks) {
+      if (id !== scanId) return;
+      const data = await bytesOf(resolve(segments[pick]));
+      const file = new Uint8Array(init.length + data.length);
+      file.set(init);
+      file.set(data, init.length);
+      powers.push(...(await blockPowers(await decoder.decodeAudioData(file.buffer))));
+    }
+    const audible = powers.filter((p) => toLufs(p) >= -70);
+    if (id === scanId && audible.length) scannedLufs = integratedLufs(audible);
+  }
+
+  if (location.hostname === 'w.soundcloud.com') {
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (!enabled || scanStarted || !/\.m3u8(\?|$)/.test(entry.name)) continue;
+        scanStarted = true;
+        scanTrack(entry.name).catch((err) => console.warn('Maestro normalizer:', err));
+      }
+    }).observe({ type: 'resource' });
+  }
+
+  // YouTube publishes each video's loudness. It's better than measuring: right from the first second, and for the whole
+  // track rather than the part heard so far. The response still describes the previous video for a moment after a change.
+  function publishedLufs() {
+    try {
+      const response = document.getElementById('movie_player').getPlayerResponse();
+      if (response.videoDetails.videoId !== trackId) return null;
+      const { trackAbsoluteLoudnessLkfs: absolute, perceptualLoudnessDb: perceptual } = response.playerConfig.audioConfig;
+      const lufs = absolute ?? perceptual;
+      return Number.isFinite(lufs) ? lufs : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const gainFor = (lufs) => clamp(TARGET - lufs, MIN_GAIN, MAX_GAIN);
+
+  function measuredGain() {
+    const gain = gainFor(integratedLufs());
+    // Turn a loud track down as soon as it's heard, but be sure before turning one up.
+    const early = blocks.length < SETTLE_BLOCKS ? Math.min(prior, gain) : gain;
+    // A soft intro says little about what follows, so a much louder passage is pulled back without waiting for the average.
+    return Math.min(early, gainFor(toLufs(mean(blocks.slice(-RECENT_BLOCKS))) - LOUD_MARGIN));
+  }
+
+  function applyGain(fixedSeconds) {
     // YouTube lowers loud videos by scaling the element's volume. The measurement replaces that, so it's undone here.
     const trim = media && media.volume >= 0.01 ? clamp(volume / media.volume, 0.25, 4) : 1;
-    const value = fromDb(gainDb) * trim;
+    const value = fromDb(gainDb - LIMITER_MAKEUP) * trim;
     if (Math.abs(value - applied) < 0.005) return;
+    const seconds = fixedSeconds ?? (value < applied ? 0.3 : 1);
     applied = value;
     chain.gain.gain.setTargetAtTime(value, ctx.currentTime, seconds);
   }
@@ -146,22 +250,30 @@
   function measure() {
     if (!enabled || !media || !sources.has(media) || sources.get(media).context !== ctx) return;
     if (media.paused || media.muted || media.volume < 0.01) return;
+    const wholeTrack = publishedLufs() ?? scannedLufs;
+    if (wholeTrack !== null) {
+      wholeTrackKnown = true;
+      gainDb = gainFor(wholeTrack);
+      applyGain();
+      return;
+    }
+    if (performance.now() < listenFrom) return;
     let power = 0;
     for (const meter of chain.meters) {
       meter.getFloatTimeDomainData(chain.data);
       power += chain.data.reduce((a, s) => a + s * s, 0) / chain.data.length;
     }
     power /= media.volume * media.volume; // the player's volume is applied before this point, and must not count
-    if (-0.691 + 10 * Math.log10(power) >= -70) {
+    if (toLufs(power) >= -70) {
       blocks.push(power);
       if (blocks.length > MAX_BLOCKS) blocks.shift();
     }
-    if (blocks.length >= SETTLE_BLOCKS) gainDb = clamp(TARGET - integratedLufs(), MIN_GAIN, MAX_GAIN);
-    applyGain(1);
+    if (blocks.length >= FAST_BLOCKS) gainDb = measuredGain();
+    applyGain();
   }
 
-  function newTrack() {
-    if (blocks.length >= SETTLE_BLOCKS * 3) {
+  function newTrack(id) {
+    if (wholeTrackKnown || blocks.length >= SETTLE_BLOCKS * 3) {
       prior = prior * 0.7 + gainDb * 0.3;
       try {
         localStorage.setItem(PRIOR_KEY, String(prior));
@@ -169,6 +281,12 @@
     }
     blocks = [];
     gainDb = prior;
+    trackId = String(id);
+    listenFrom = performance.now() + NEW_TRACK_MS;
+    scanId++;
+    scanStarted = false;
+    scannedLufs = null;
+    wholeTrackKnown = false;
     if (chain) applyGain(0.1);
   }
 
@@ -191,7 +309,7 @@
     const msg = e.data && e.data.maestroNormalizer;
     if (e.source !== window.parent || e.origin !== 'https://maestro.app' || typeof msg !== 'object' || !msg) return;
     if (typeof msg.volume === 'number') volume = msg.volume;
-    if (msg.newTrack) newTrack();
+    if (msg.newTrack) newTrack(msg.newTrack);
     if (typeof msg.enabled === 'boolean' && msg.enabled !== enabled) {
       enabled = msg.enabled;
       if (media) tryAttach(media);
@@ -201,5 +319,5 @@
   window.parent.postMessage({ maestroNormalizer: 'ready' }, 'https://maestro.app');
 
   // For checking on it from DevTools.
-  window.__maestroNormalizer = () => ({ enabled, volume, gainDb, prior, blocks: blocks.length, lufs: blocks.length ? integratedLufs() : null });
+  window.__maestroNormalizer = () => ({ enabled, volume, gainDb, prior, scannedLufs, blocks: blocks.length, lufs: blocks.length ? integratedLufs() : null });
 })();
