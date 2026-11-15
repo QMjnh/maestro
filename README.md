@@ -60,7 +60,8 @@ shows its login screen, Maestro brings that window up so you can sign in.
 | **Paste a link** | Spotify tracks, albums, and playlists; YouTube videos and playlists; SoundCloud tracks and sets. You can play everything, add it to the queue, or save it as a Maestro playlist. |
 | **Queue** | Drag to reorder. Includes shuffle and repeat (all / one). |
 | **Autoplay** | When the queue runs low, Maestro adds recommendations so the music never stops: Spotify's song radio, YouTube's Mix, SoundCloud related tracks, or all of them interleaved (*Queue → Autoplay: Off / Same app / All apps*). Songs you add always play before autoplay's picks. |
-| **Playlists** | Stored in `%APPDATA%\Maestro\playlists.json`. Add tracks from the ⋯ menu, or drag a track onto a playlist in the sidebar. |
+| **Favorites** | Tap the heart beside the current song in the player bar or Now Playing panel, or on a track row. Open **Favorites** in the sidebar to play, shuffle, or queue your saved songs from all three sources. Saved locally in `%APPDATA%\Maestro\favorites.json`. |
+| **Playlists** | Stored in `%APPDATA%\Maestro\playlists.json`. Use the **+** beside the current song to add it to a playlist or Favorites, use a track's ⋯ menu, or drag a track onto a playlist in the sidebar. |
 | **Volume** | A single slider controls YouTube, Spotify, and SoundCloud. *Even out volume between sources* (Settings, on by default) measures each YouTube and SoundCloud track and turns it up or down to match Spotify's level. It settles in the first few seconds of a track. |
 | **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search |
 

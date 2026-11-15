@@ -15,6 +15,7 @@
           <button class="nav-item" data-view="home"><span data-icon="home"></span>Home</button>
           <button class="nav-item" data-view="search"><span data-icon="search"></span>Search</button>
           <button class="nav-item" data-view="queue"><span data-icon="queue"></span>Queue <span class="count" id="queueCount"></span></button>
+          <button class="nav-item" data-view="favorites"><span data-icon="heart"></span>Favorites <span class="count" id="favoritesCount"></span></button>
         </nav>
         <div class="section-title">
           Playlists
@@ -36,8 +37,16 @@
           <img class="np-art" id="npArt" alt="" />
           <div class="np-empty" id="npEmpty">Nothing playing yet.<br />Search for a song or paste a link.</div>
         </div>
-        <div class="np-title" id="npTitle"></div>
-        <div class="np-artist" id="npArtist"></div>
+        <div class="np-details">
+          <div class="np-meta">
+            <div class="np-title" id="npTitle"></div>
+            <div class="np-artist" id="npArtist"></div>
+          </div>
+          <div class="track-save-actions">
+            <button class="icon-btn toggle" data-favorite-current title="Add to favorites" aria-label="Add to favorites" aria-pressed="false" disabled><span data-icon="heart"></span></button>
+            <button class="icon-btn" data-save-current title="Add to playlist or favorites" aria-label="Add to playlist or favorites" aria-haspopup="menu" disabled><span data-icon="plusCircle"></span></button>
+          </div>
+        </div>
         <div class="np-note" id="npNote"></div>
         <div class="np-next" id="npNext"></div>
       </aside>
@@ -48,6 +57,10 @@
           <div class="pl-meta">
             <div class="pl-title" id="plTitle"></div>
             <div class="pl-artist" id="plArtist"></div>
+          </div>
+          <div class="track-save-actions">
+            <button class="icon-btn toggle" data-favorite-current title="Add to favorites" aria-label="Add to favorites" aria-pressed="false" disabled><span data-icon="heart"></span></button>
+            <button class="icon-btn" data-save-current title="Add to playlist or favorites" aria-label="Add to playlist or favorites" aria-haspopup="menu" disabled><span data-icon="plusCircle"></span></button>
           </div>
         </div>
         <div class="pl-center">

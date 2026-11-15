@@ -92,6 +92,9 @@ const ICONS = {
     '<path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15zM16 16l5 5"/>',
   queue: '<path d="M3 5h13v2H3zM3 11h13v2H3zM3 17h9v2H3zM17 13.5v7l5-3.5z"/>',
   plus: '<path d="M11 4h2v16h-2zM4 11h16v2H4z"/>',
+  plusCircle: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 7h2v10h-2zM7 11h10v2H7z"/>',
+  heart: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/>',
+  heartFilled: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/>',
   settings:
     '<path fill="none" stroke="currentColor" stroke-width="2" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   volume: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/>',
@@ -146,6 +149,8 @@ const saved = JSON.parse(localStorage.getItem('maestro.state') || localStorage.g
 const state = {
   view: { name: 'home' },
   playlists: [],
+  favorites: null, // null until local favorites have loaded
+  favoritesError: '',
   collection: null, // the playlist opened from a home page card
   home: {
     chart: null, // null = not loaded yet
@@ -930,6 +935,94 @@ function stripEntry({ qid, auto, ...rest }) {
 }
 
 // ===========================================================================
+// Favorites (local to Maestro, across all three sources)
+// ===========================================================================
+
+const trackKey = (item) => `${item.source}:${item.id}`;
+const favoritePending = new Set();
+let favoriteWrites = Promise.resolve();
+
+function isFavorite(item) {
+  return !!item && !!state.favorites?.some((t) => trackKey(t) === trackKey(item));
+}
+
+async function loadFavorites() {
+  state.favoritesError = '';
+  if (state.view.name === 'favorites') renderMain();
+  try {
+    state.favorites = await api('/api/favorites');
+  } catch (err) {
+    state.favoritesError = err.message;
+    toast('Could not load favorites: ' + err.message, { error: true });
+  }
+  renderSidebar();
+  syncFavoriteButtons();
+  if (state.view.name === 'favorites') renderMain();
+}
+
+async function setFavorite(item, favorite) {
+  if (!item || !state.favorites || favoritePending.has(trackKey(item))) return;
+  const key = trackKey(item);
+  favoritePending.add(key);
+  syncFavoriteButtons();
+  // Serialize changes so responses for different songs cannot overwrite newer state.
+  const write = favoriteWrites.then(async () => {
+    state.favorites = await api('/api/favorites', { method: 'PUT', body: { item: stripEntry(item), favorite } });
+    toast(favorite ? `Added “${item.title}” to favorites` : `Removed “${item.title}” from favorites`);
+  });
+  favoriteWrites = write.catch(() => {});
+  try {
+    await write;
+  } catch (err) {
+    toast('Could not update favorites: ' + err.message, { error: true });
+  } finally {
+    favoritePending.delete(key);
+    renderSidebar();
+    syncFavoriteButtons();
+    if (state.view.name === 'favorites') renderMain();
+  }
+}
+
+function toggleFavorite(item) {
+  return setFavorite(item, !isFavorite(item));
+}
+
+function paintFavoriteButton(btn, item) {
+  const liked = isFavorite(item);
+  const label = liked ? 'Remove from favorites' : 'Add to favorites';
+  btn.disabled = !item || !state.favorites || favoritePending.has(trackKey(item));
+  btn.title = state.favorites === null ? (state.favoritesError ? 'Favorites unavailable — open Favorites to retry' : 'Loading favorites…') : label;
+  btn.setAttribute('aria-label', btn.title);
+  btn.setAttribute('aria-pressed', String(liked));
+  btn.classList.toggle('on', liked);
+  btn.innerHTML = icon(liked ? 'heartFilled' : 'heart', btn.dataset.act ? 16 : 20);
+}
+
+function syncFavoriteButtons() {
+  const item = current();
+  for (const btn of $$('[data-favorite-current]')) paintFavoriteButton(btn, item);
+  for (const btn of $$('[data-save-current]')) btn.disabled = !item;
+  for (const btn of $$('#main [data-act="favorite"]')) paintFavoriteButton(btn, rowContext(btn.closest('.track')).item);
+}
+
+function saveTrackEntries(item, ctx) {
+  const liked = isFavorite(item);
+  return [
+    {
+      text: liked ? 'Remove from favorites' : 'Add to favorites',
+      disabled: !state.favorites || favoritePending.has(trackKey(item)),
+      run: () => toggleFavorite(item),
+    },
+    '-',
+    { label: 'Add to playlist' },
+    ...state.playlists
+      .filter((p) => !(ctx === 'playlist' && p.id === state.view.id))
+      .map((p) => ({ text: p.name, run: () => addToPlaylist(p, [item]) })),
+    { text: '+ New playlist…', run: () => createPlaylist([item], item.title) },
+  ];
+}
+
+// ===========================================================================
 // Rendering — player bar & now playing
 // ===========================================================================
 
@@ -965,6 +1058,7 @@ function renderPlayer() {
   else if (npArt.getAttribute('src') !== item.art) npArt.src = item.art;
   $('#npTitle').textContent = item?.title || '';
   $('#npArtist').textContent = item?.artist || '';
+  syncFavoriteButtons();
   const upcoming = P.queue.slice(P.index + 1, P.index + 4);
   $('#npNext').innerHTML = upcoming.length
     ? `<div class="list-label">${upcoming[0].auto ? 'Next up · Autoplay' : 'Next up'}</div><ul class="tracks">${upcoming.map((e, k) => trackRow(e, { ctx: 'queue', index: P.index + 1 + k, compact: true, actions: false, badge: false })).join('')}</ul>`
@@ -1012,6 +1106,7 @@ function renderVolume() {
 function renderSidebar() {
   for (const b of $$('.nav-item[data-view]')) b.classList.toggle('active', state.view.name === b.dataset.view);
   $('#queueCount').textContent = P.queue.length || '';
+  $('#favoritesCount').textContent = state.favorites?.length || '';
   const nav = $('#playlistNav');
   nav.innerHTML = state.playlists.length
     ? state.playlists
@@ -1084,7 +1179,7 @@ async function refreshStatus() {
 // ===========================================================================
 
 /**
- * ctx: 'results' | 'queue' | 'playlist' — decides what clicking does.
+ * ctx: 'results' | 'queue' | 'playlist' | 'favorites' — decides what clicking does.
  * index: position in the list being rendered.
  */
 function trackRow(item, { ctx, index, compact = false, actions = true, numbered = false, badge = true }) {
@@ -1102,6 +1197,7 @@ function trackRow(item, { ctx, index, compact = false, actions = true, numbered 
       actions
         ? `<button class="icon-btn small" data-act="play" title="Play">${icon('play', 16)}</button>
            ${ctx !== 'queue' ? `<button class="icon-btn small" data-act="queue" title="Add to queue">${icon('addQueue', 16)}</button>` : ''}
+           <button class="icon-btn small toggle${isFavorite(item) ? ' on' : ''}" data-act="favorite" title="${isFavorite(item) ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFavorite(item) ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${isFavorite(item)}" ${!state.favorites || favoritePending.has(trackKey(item)) ? 'disabled' : ''}>${icon(isFavorite(item) ? 'heartFilled' : 'heart', 16)}</button>
            ${remove ? `<button class="icon-btn small" data-act="remove" title="Remove">${icon('close', 16)}</button>` : ''}
            <button class="icon-btn small" data-act="more" title="More">${icon('more', 16)}</button>`
         : ''
@@ -1116,6 +1212,7 @@ function rowContext(row) {
   let list = [];
   if (ctx === 'queue') list = P.queue;
   else if (ctx === 'playlist') list = state.playlists.find((p) => p.id === state.view.id)?.items || [];
+  else if (ctx === 'favorites') list = state.favorites || [];
   else if (ctx === 'results') list = resultList(row.dataset.list || row.closest('[data-list]')?.dataset.list);
   return { ctx, index, list, item: list[index] };
 }
@@ -1132,11 +1229,13 @@ function onRowActivate(row, act) {
   if (!item) return;
   if (act === 'play') {
     if (ctx === 'queue') playIndex(index);
-    else if (ctx === 'playlist' || list === state.collection?.items) playList(list, index);
+    else if (ctx === 'playlist' || ctx === 'favorites' || list === state.collection?.items) playList(list, index);
     else playNow([item]);
   } else if (act === 'queue') {
     addToQueue([item]);
     toast(`Added “${item.title}” to queue`);
+  } else if (act === 'favorite') {
+    toggleFavorite(item);
   } else if (act === 'remove') {
     if (ctx === 'queue') removeFromQueue(index);
     else if (ctx === 'playlist') {
@@ -1156,20 +1255,22 @@ function onRowActivate(row, act) {
 function openMenu(rect, entries) {
   const menu = $('#menu');
   menu.innerHTML = entries
-    .map((e, i) => (e === '-' ? '<hr>' : e.label && !e.run ? `<div class="label">${esc(e.label)}</div>` : `<button data-i="${i}">${esc(e.text)}</button>`))
+    .map((e, i) => (e === '-' ? '<hr>' : e.label && !e.run ? `<div class="label">${esc(e.label)}</div>` : `<button role="menuitem" data-i="${i}" ${e.disabled ? 'disabled' : ''}>${esc(e.text)}</button>`))
     .join('');
   menu.hidden = false;
   const { innerWidth: W, innerHeight: H } = window;
   const mw = menu.offsetWidth;
   const mh = menu.offsetHeight;
-  menu.style.left = Math.min(rect.left, W - mw - 8) + 'px';
+  menu.style.left = Math.max(8, Math.min(rect.left, W - mw - 8)) + 'px';
   menu.style.top = (rect.bottom + mh + 8 > H ? Math.max(8, rect.top - mh - 4) : rect.bottom + 4) + 'px';
   menu.onclick = (ev) => {
     const b = ev.target.closest('button[data-i]');
-    if (!b) return;
+    if (!b || b.disabled) return;
     closeMenu();
-    entries[+b.dataset.i].run();
+    Promise.resolve().then(() => entries[+b.dataset.i].run()).catch((err) => toast(err.message, { error: true }));
   };
+  menu.setAttribute('role', 'menu');
+  menu.querySelector('button:not(:disabled)')?.focus();
 }
 function closeMenu() {
   $('#menu').hidden = true;
@@ -1180,11 +1281,7 @@ function openTrackMenu(rect, { ctx, index, item }) {
     { text: 'Play next', run: () => (addToQueue([item], { playNext: true }), toast('Playing next')) },
     { text: 'Add to queue', run: () => (addToQueue([item]), toast('Added to queue')) },
     '-',
-    { label: 'Add to playlist' },
-    ...state.playlists
-      .filter((p) => !(ctx === 'playlist' && p.id === state.view.id))
-      .map((p) => ({ text: p.name, run: () => addToPlaylist(p, [item]) })),
-    { text: '+ New playlist…', run: () => createPlaylist([item], item.title) },
+    ...saveTrackEntries(item, ctx),
     '-',
     {
       text: { spotify: 'Open in Spotify', youtube: 'Open on YouTube', soundcloud: 'Open on SoundCloud' }[item.source] || 'Open',
@@ -1215,6 +1312,7 @@ function renderMain() {
   if (v.name === 'home') renderHomeView();
   else if (v.name === 'queue') renderQueueView();
   else if (v.name === 'playlist') renderPlaylistView();
+  else if (v.name === 'favorites') renderFavoritesView();
   else if (v.name === 'collection') renderCollectionView();
   else renderSearchView();
 }
@@ -1785,6 +1883,36 @@ function upcomingGroups(after) {
     .join('');
 }
 
+// ---- favorites ----------------------------------------------------------------
+
+function renderFavoritesView() {
+  const items = state.favorites || [];
+  const ready = state.favorites !== null;
+  $('#main').innerHTML = `
+    <div class="view-head favorites-head">
+      <div class="favorites-heading">${icon('heartFilled', 32)}<h1>Favorites</h1></div>
+      <div class="sub">${ready ? `${items.length} tracks · ${totalDuration(items)} · ${sourceSummary(items)}` : 'Your favorite songs from every app, together.'}</div>
+      <div class="actions">
+        <button class="btn primary" id="favPlay" ${items.length ? '' : 'disabled'}>${icon('play', 16)} Play</button>
+        <button class="btn ghost" id="favShuffle" ${items.length ? '' : 'disabled'}>${icon('shuffle', 16)} Shuffle</button>
+        <button class="btn ghost" id="favQueue" ${items.length ? '' : 'disabled'}>Add to queue</button>
+      </div>
+    </div>
+    <div class="view-body">
+      ${ready
+        ? items.length
+          ? `<ul class="tracks">${items.map((it, i) => trackRow(it, { ctx: 'favorites', index: i, numbered: true })).join('')}</ul>`
+          : '<div class="placeholder"><h2>Keep the songs you love</h2>Tap the heart beside a song to save it here.<br>Your favorites are saved in Maestro on this computer.</div>'
+        : state.favoritesError
+          ? '<div class="placeholder">Could not load favorites.<br><button class="btn ghost" id="favRetry">Try again</button></div>'
+          : '<div class="placeholder">Loading favorites…</div>'}
+    </div>`;
+  $('#favPlay').onclick = () => playList(items, 0);
+  $('#favShuffle').onclick = () => playList(items, 0, { shuffle: true });
+  $('#favQueue').onclick = () => (addToQueue(items), toast(`Added ${items.length} tracks to queue`));
+  if ($('#favRetry')) $('#favRetry').onclick = loadFavorites;
+}
+
 // ---- playlist -----------------------------------------------------------------
 
 function renderPlaylistView() {
@@ -2038,6 +2166,11 @@ function wire() {
   $('#btnShuffle').onclick = toggleShuffle;
   $('#btnRepeat').onclick = cycleRepeat;
   $('#btnMute').onclick = toggleMute;
+  for (const btn of $$('[data-favorite-current]')) btn.onclick = () => toggleFavorite(current());
+  for (const btn of $$('[data-save-current]')) btn.onclick = () => {
+    const item = current();
+    if (item) openMenu(btn.getBoundingClientRect(), saveTrackEntries(item));
+  };
   setupBar($('#progress'), { onSeek: (v) => seek(v * P.duration) });
   setupBar($('#volume'), { onSeek: (v) => setVolume(v * 100), onInput: (v) => setVolume(v * 100) });
 
@@ -2117,7 +2250,7 @@ function wire() {
     const typing = e.target.closest('input, textarea, [contenteditable]');
     if (e.key === 'Escape') closeMenu();
     if (typing) return;
-    if (e.code === 'Space') {
+    if (e.code === 'Space' && !e.target.closest('button')) {
       e.preventDefault();
       togglePlay();
     } else if (e.key === 'ArrowRight' && (e.ctrlKey || e.metaKey)) next();
@@ -2151,6 +2284,7 @@ function boot() {
   loadSoundCloud();
   renderAll();
   renderMain();
+  loadFavorites();
   loadPlaylists().then(() => loadHome());
   refreshStatus().then(paintHome);
   setInterval(() => P.engine !== 'spotify' && refreshStatus(), 15000);

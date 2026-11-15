@@ -200,6 +200,19 @@ sealed class Api(SpotifyApp spotify)
             case ("GET", "/api/playlists"):
                 return Store.ListPlaylists();
 
+            case ("GET", "/api/favorites"):
+                return Store.ListFavorites();
+
+            case ("PUT", "/api/favorites"):
+            {
+                var b = Body();
+                if (b?["item"].Str("id") is not { Length: > 0 } ||
+                    b?["item"].Str("source") is not ("spotify" or "youtube" or "soundcloud") ||
+                    b?["favorite"] is not JsonValue flag || !flag.TryGetValue<bool>(out var favorite))
+                    throw new BadRequest("item with source and id, and a favorite boolean are required");
+                return Store.SetFavorite(b["item"], favorite);
+            }
+
             case ("POST", "/api/playlists"):
                 return Store.SavePlaylist(Body());
 

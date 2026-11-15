@@ -11,7 +11,7 @@ record Playlist(string Id, string Name, List<Track> Items, long UpdatedAt, long 
 /// <summary>A playlist on another service, shown as a home page card. Opening it resolves <c>Url</c> like a pasted link.</summary>
 record PlaylistCard(string Source, string Id, string Title, string Subtitle, string Art, string Url);
 
-/// <summary>Settings and playlists, stored as JSON in %APPDATA%\Maestro.</summary>
+/// <summary>Settings, playlists, and favorites, stored as JSON in %APPDATA%\Maestro.</summary>
 static class Store
 {
     public static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Maestro");
@@ -123,6 +123,31 @@ static class Store
     public static void DeletePlaylist(string id)
     {
         lock (Gate) Write("playlists.json", ListPlaylists().Where(p => p.Id != id).ToList());
+    }
+
+    // ---- favorites -----------------------------------------------------------
+
+    public static List<Track> ListFavorites()
+    {
+        lock (Gate) return Read("favorites.json", new List<Track>());
+    }
+
+    public static List<Track> SetFavorite(JsonNode? item, bool favorite)
+    {
+        var track = CleanTrack(item) ?? throw new ArgumentException("A track is required");
+        lock (Gate)
+        {
+            var all = ListFavorites();
+            var index = all.FindIndex(t => t.Source == track.Source && t.Id == track.Id);
+            if (favorite)
+            {
+                if (index >= 0) all[index] = track;
+                else all.Insert(0, track);
+            }
+            else all.RemoveAll(t => t.Source == track.Source && t.Id == track.Id);
+            Write("favorites.json", all);
+            return all;
+        }
     }
 
     static Track? CleanTrack(JsonNode? n)
