@@ -97,7 +97,9 @@ autostart option off; restarting Spotify normally removes the port.
 - This relies on Spotify's internal (unofficial) app code, and on SoundCloud's own site client id for search. A big
   Spotify or SoundCloud update could change those, and Maestro may need a fix when that happens.
 - Spotify playlist and album imports, and SoundCloud set imports, currently include up to 100 tracks.
-- Some YouTube videos block embedding. Maestro tells you and skips them.
+- Some YouTube videos block embedding. Maestro plays another upload of the same recording if there is one, and
+  otherwise plays the video from youtube.com in a hidden window. It only skips videos that don't play there either
+  (age-restricted, private, or taken down).
 - SoundCloud Go+ exclusives and tracks that block embedding may not play.
 - The window uses its own WebView2 profile (in `%LOCALAPPDATA%\Maestro`), so you aren't signed in to YouTube there.
 
@@ -150,6 +152,8 @@ src/Maestro/
   SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
   inject.js             the code Maestro runs inside Spotify's page
   normalizer.js         the volume normalizer, run inside the YouTube and SoundCloud frames
+  YouTubePage.cs        the hidden youtube.com window for videos that block embedding
+  watch.js              the code Maestro runs on that youtube.com page
   Radio.cs              autoplay and home page recommendations (Spotify song radio, YouTube Mix, SoundCloud related, or all)
   SpotifyLinks.cs       Spotify link parsing and metadata (public embed pages)
   YouTube.cs            YouTube link parsing, search, playlists

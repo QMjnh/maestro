@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.WebSockets;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -56,11 +55,7 @@ sealed class SpotifyApp : IDisposable
 
     bool StartedByUs(HashSet<uint> pids) => pids.Overlaps(ourPids);
 
-    static string LoadInjectScript()
-    {
-        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("inject.js")!;
-        return new StreamReader(s).ReadToEnd();
-    }
+    static string LoadInjectScript() => Program.Resource("inject.js");
 
     // ---- DevTools connection ------------------------------------------------------
 

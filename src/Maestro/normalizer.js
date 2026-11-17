@@ -1,11 +1,16 @@
-// Runs inside the YouTube and SoundCloud player frames (MainForm.cs adds it to every frame in the window).
+// Runs inside the YouTube and SoundCloud player frames (MainForm.cs adds it to every frame in the window), and on
+// youtube.com itself in the hidden browser that plays videos which can't be embedded (YouTubePage.cs).
 // Measures how loud the current track really is and turns it up or down to match Spotify's level. Spotify's own audio
 // never passes through a web page, so it can't be changed here; Spotify normalizes to about -14 LUFS by itself.
 
 (() => {
-  if (window === window.top || window.parent !== window.top) return;
-  if (location.ancestorOrigins[0] !== 'https://maestro.app') return;
-  if (!/^(www\.youtube(-nocookie)?\.com|w\.soundcloud\.com)$/.test(location.hostname)) return;
+  // On the hidden youtube.com page, messages go through the app instead of between frames.
+  const hosted = window === window.top && location.hostname === 'www.youtube.com' && !!window.chrome?.webview;
+  if (!hosted) {
+    if (window === window.top || window.parent !== window.top) return;
+    if (location.ancestorOrigins[0] !== 'https://maestro.app') return;
+    if (!/^(www\.youtube(-nocookie)?\.com|w\.soundcloud\.com)$/.test(location.hostname)) return;
+  }
 
   const TARGET = -14; // LUFS
   const MIN_GAIN = -18; // dB
@@ -305,9 +310,8 @@
   };
   document.addEventListener('playing', (e) => tryAttach(e.target), true);
 
-  window.addEventListener('message', (e) => {
-    const msg = e.data && e.data.maestroNormalizer;
-    if (e.source !== window.parent || e.origin !== 'https://maestro.app' || typeof msg !== 'object' || !msg) return;
+  const onMessage = (msg) => {
+    if (typeof msg !== 'object' || !msg) return;
     if (typeof msg.volume === 'number') volume = msg.volume;
     if (msg.newTrack) newTrack(msg.newTrack);
     if (typeof msg.enabled === 'boolean' && msg.enabled !== enabled) {
@@ -315,8 +319,16 @@
       if (media) tryAttach(media);
       route();
     }
-  });
-  window.parent.postMessage({ maestroNormalizer: 'ready' }, 'https://maestro.app');
+  };
+  if (hosted) {
+    chrome.webview.addEventListener('message', (e) => onMessage(e.data && e.data.maestroNormalizer));
+    chrome.webview.postMessage({ maestroNormalizer: 'ready' });
+  } else {
+    window.addEventListener('message', (e) => {
+      if (e.source === window.parent && e.origin === 'https://maestro.app') onMessage(e.data && e.data.maestroNormalizer);
+    });
+    window.parent.postMessage({ maestroNormalizer: 'ready' }, 'https://maestro.app');
+  }
 
   // For checking on it from DevTools.
   window.__maestroNormalizer = () => ({ enabled, volume, gainDb, prior, scannedLufs, blocks: blocks.length, lufs: blocks.length ? integratedLufs() : null });

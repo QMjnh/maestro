@@ -1,5 +1,5 @@
 'use strict';
-/* Maestro — one queue, three engines (YouTube iframe + Spotify desktop + SoundCloud widget). */
+/* Maestro — one queue, three engines (YouTube iframe or youtube.com page + Spotify desktop + SoundCloud widget). */
 
 // ===========================================================================
 // Utilities
@@ -255,7 +255,7 @@ function loadYouTube() {
 }
 
 function onYouTubeState(e) {
-  if (P.engine !== 'youtube') return;
+  if (P.engine !== 'youtube' || ytPage.active) return;
   if (e.data === YT_STATE.PLAYING) {
     P.playing = true;
     P.loading = false;
@@ -271,15 +271,156 @@ function onYouTubeState(e) {
   renderPlayer();
 }
 
-function onYouTubeError(e) {
-  if (P.engine !== 'youtube') return;
-  const item = current();
-  const why = { 2: 'invalid video', 5: 'player error', 100: 'video not found', 101: 'embedding disabled', 150: 'embedding disabled' }[e.data] || 'error ' + e.data;
+function skipYouTube(item, why) {
   toast(`Can't play “${item?.title || 'video'}” on YouTube (${why}) — skipping.`, { error: true, ms: 5000 });
   P.loading = false;
   P.playing = false;
+  renderPlayer();
   setTimeout(() => next({ auto: true }), 600);
 }
+
+// When a video won't play in the embedded player: another upload of the same recording that will, then (if the owner
+// only blocks embedding) the video itself on youtube.com, then skip. What worked is remembered for the session.
+const EMBED_BLOCKED = [101, 150, 153];
+const COPY_NOTE = "Playing another upload of this song, because the original can't play inside other apps.";
+const ytFallback = new Map(); // video id -> { copy: id } | { page: true }
+let ytLoadedId = null; // what the embedded player was last given
+let ytRecovery = null; // { token, code, copies } for the track being recovered
+
+function ytLoad(id, autoplay) {
+  ytLoadedId = id;
+  if (autoplay) yt.loadVideoById(id);
+  else yt.cueVideoById(id);
+}
+
+function onYouTubeError(e) {
+  if (P.engine !== 'youtube' || ytPage.active) return;
+  recoverYouTube(current(), e.data, P.token);
+}
+
+async function recoverYouTube(item, code, token) {
+  if (!item) return;
+  if (ytRecovery?.token !== token) ytRecovery = { token, code, copies: null };
+  const rec = ytRecovery;
+  const why = { 2: 'invalid video', 5: 'player error', 100: 'video not found', 101: 'embedding disabled', 150: 'embedding disabled', 153: 'embedding disabled' }[rec.code] || 'error ' + rec.code;
+  if (rec.code === 5) return skipYouTube(item, why);
+  const autoplay = P.loaded;
+  P.loading = autoplay;
+  renderPlayer();
+
+  if (!rec.copies) {
+    const q = new URLSearchParams({ id: item.id, title: item.title, artist: item.artist, duration: item.duration || '' });
+    rec.copies = await api('/api/youtube/copies?' + q)
+      .then((r) => r.items.map((t) => t.id))
+      .catch(() => []);
+    if (token !== P.token) return;
+  }
+  rec.copies = rec.copies.filter((id) => id !== ytLoadedId);
+  const copy = rec.copies.shift();
+  if (copy) {
+    ytFallback.set(item.id, { copy });
+    setNote(COPY_NOTE);
+    return ytLoad(copy, autoplay);
+  }
+  ytFallback.delete(item.id);
+  if (EMBED_BLOCKED.includes(rec.code) && window.chrome?.webview) {
+    ytFallback.set(item.id, { page: true });
+    if (autoplay) ytPage.load(item, token);
+    else P.loading = false;
+    return renderPlayer();
+  }
+  skipYouTube(item, why);
+}
+
+// ===========================================================================
+// YouTube page engine: youtube.com in a hidden second browser (YouTubePage.cs, watch.js), for videos whose owner
+// blocks embedding. It's still the 'youtube' engine; ytp() gives the unified player whichever one is playing.
+// ===========================================================================
+
+const PAGE_NOTE = "Playing from youtube.com, because this video can't play inside other apps.";
+
+const ytPage = {
+  active: false, // the current track is playing on the page, not in the embedded player
+  id: null,
+  started: false,
+  ad: false,
+  ended: false,
+  time: 0,
+  duration: 0,
+  send(msg) {
+    window.chrome?.webview?.postMessage({ ytPage: msg });
+  },
+  sendVolume() {
+    this.send({ cmd: 'volume', volume: P.volume, muted: P.muted });
+  },
+  load(item, token) {
+    yt?.stopVideo?.();
+    Object.assign(this, { active: true, id: item.id, started: false, ad: false, ended: false, time: 0, duration: 0 });
+    P.loading = true;
+    setNote(PAGE_NOTE);
+    this.send({ cmd: 'load', id: item.id });
+    renderPlayer();
+    setTimeout(() => {
+      if (token === P.token && this.active && !this.started) skipYouTube(item, 'youtube.com did not start it');
+    }, 20000);
+  },
+  stop() {
+    if (!this.active) return;
+    this.active = false;
+    this.send({ cmd: 'stop' });
+  },
+};
+
+const ytPageControls = {
+  playVideo: () => ytPage.send({ cmd: 'play' }),
+  pauseVideo: () => ytPage.send({ cmd: 'pause' }),
+  seekTo: (seconds) => {
+    ytPage.time = seconds;
+    ytPage.send({ cmd: 'seek', seconds });
+  },
+  stopVideo: () => ytPage.stop(),
+  getCurrentTime: () => ytPage.time,
+  getDuration: () => ytPage.duration,
+};
+const ytp = () => (ytPage.active ? ytPageControls : yt);
+
+window.chrome?.webview?.addEventListener('message', (e) => {
+  const m = e.data?.ytPage;
+  if (!m) return;
+  if (m.maestroNormalizer === 'ready') return syncNormalizer({ newTrack: current()?.id });
+  if (m.hello) return ytPage.sendVolume();
+  const item = current();
+  if (!ytPage.active || P.engine !== 'youtube' || m.id !== ytPage.id || item?.id !== m.id) return; // a page left over from an earlier track
+  if (m.error) {
+    ytPage.started = true; // no timeout toast as well
+    ytPage.stop();
+    return skipYouTube(item, m.error);
+  }
+  ytPage.time = m.time || 0;
+  if (m.duration) ytPage.duration = m.duration;
+  const before = `${P.playing}${P.loading}`;
+  const ad = m.state === 'ad';
+  if (ad !== ytPage.ad) setNote(ad ? 'Skipping a youtube.com ad…' : PAGE_NOTE);
+  ytPage.ad = ad;
+  if (ad) {
+    ytPage.started = true;
+    P.loading = true;
+    P.playing = false;
+  } else if (m.state === 'playing') {
+    ytPage.started = true;
+    P.playing = true;
+    P.loading = false;
+    P.duration = ytPage.duration * 1000 || P.duration;
+    if (!item.duration && P.duration) item.duration = Math.round(P.duration);
+  } else if (m.state === 'paused') {
+    P.playing = false;
+  } else if (m.state === 'ended' && ytPage.started && !ytPage.ended) {
+    ytPage.ended = true;
+    P.playing = false;
+    return onTrackEnded();
+  }
+  if (`${P.playing}${P.loading}` !== before) renderPlayer();
+});
 
 // ===========================================================================
 // Spotify engine (desktop app via local server)
@@ -519,6 +660,7 @@ async function soundCloudStart(item, token, autoplay) {
 function syncNormalizer(extra = {}) {
   const msg = { maestroNormalizer: { enabled: P.normalize, volume: P.volume / 100, ...extra } };
   for (const frame of [yt?.getIframe?.(), $('#scPlayer')]) frame?.contentWindow?.postMessage(msg, '*');
+  if (ytPage.active) ytPage.send(msg);
 }
 
 window.addEventListener('message', (e) => {
@@ -535,8 +677,9 @@ function stopEngine(nextSource) {
     spotifyStop();
     // Only pause Spotify when switching away from it; Spotify→Spotify just swaps the URI.
     if (nextSource !== 'spotify' && P.playing) spotifyControl('pause');
-  } else if (P.engine === 'youtube' && yt && nextSource !== 'youtube') {
-    yt.stopVideo?.();
+  } else if (P.engine === 'youtube' && nextSource !== 'youtube') {
+    yt?.stopVideo?.();
+    ytPage.stop();
   } else if (P.engine === 'soundcloud' && sc && nextSource !== 'soundcloud') {
     sc.pause();
   }
@@ -562,10 +705,16 @@ async function playIndex(i, { autoplay = true } = {}) {
   if (item.source === 'youtube') {
     await ytReady;
     if (token !== P.token) return;
-    P.loading = autoplay;
-    if (autoplay) yt.loadVideoById(item.id);
-    else yt.cueVideoById(item.id);
-    renderPlayer();
+    const fallback = ytFallback.get(item.id);
+    if (fallback?.page) {
+      if (autoplay) ytPage.load(item, token);
+    } else {
+      ytPage.stop();
+      P.loading = autoplay;
+      if (fallback?.copy) setNote(COPY_NOTE);
+      ytLoad(fallback?.copy || item.id, autoplay);
+      renderPlayer();
+    }
   } else if (item.source === 'soundcloud') {
     await soundCloudStart(item, token, autoplay);
     renderPlayer();
@@ -611,8 +760,8 @@ function togglePlay() {
   }
   if (!P.loaded) return playIndex(P.index);
   if (P.engine === 'youtube') {
-    if (P.playing) yt.pauseVideo();
-    else yt.playVideo();
+    if (P.playing) ytp().pauseVideo();
+    else ytp().playVideo();
   } else if (P.engine === 'spotify') {
     spotifyControl(P.playing ? 'pause' : 'resume');
     P.playing = !P.playing;
@@ -628,7 +777,7 @@ function seek(ms) {
   ms = Math.max(0, Math.min(ms, P.duration || ms));
   P.position = ms;
   sp.lastSync = performance.now();
-  if (P.engine === 'youtube') yt.seekTo(ms / 1000, true);
+  if (P.engine === 'youtube') ytp().seekTo(ms / 1000, true);
   else if (P.engine === 'soundcloud' && sc) sc.seekTo(ms);
   else if (P.engine === 'spotify') {
     clearTimeout(sp.endTimer);
@@ -654,6 +803,7 @@ function setVolume(v) {
     if (!P.muted) yt.unMute();
   }
   if (sc?.setVolume) sc.setVolume(P.muted ? 0 : P.volume);
+  if (ytPage.active) ytPage.sendVolume();
   pushSpotifyVolume();
   syncNormalizer();
   persist();
@@ -664,6 +814,7 @@ function toggleMute() {
   P.muted = !P.muted;
   if (yt?.mute) P.muted ? yt.mute() : yt.unMute();
   if (sc?.setVolume) sc.setVolume(P.muted ? 0 : P.volume);
+  if (ytPage.active) ytPage.sendVolume();
   pushSpotifyVolume();
   persist();
   renderVolume();
@@ -1052,7 +1203,7 @@ function renderPlayer() {
 
   // Now-playing panel
   const np = $('#nowPlaying');
-  np.className = 'nowplaying ' + (P.engine === 'youtube' ? 'youtube' : item ? 'art' : '');
+  np.className = 'nowplaying ' + (P.engine === 'youtube' && !ytPage.active ? 'youtube' : item ? 'art' : '');
   const npArt = $('#npArt');
   if (!item?.art) npArt.removeAttribute('src');
   else if (npArt.getAttribute('src') !== item.art) npArt.src = item.art;
@@ -1079,7 +1230,7 @@ function renderPlayer() {
 }
 
 function livePosition() {
-  if (P.engine === 'youtube' && yt?.getCurrentTime && P.loaded) return yt.getCurrentTime() * 1000;
+  if (P.engine === 'youtube' && ytp()?.getCurrentTime && P.loaded) return ytp().getCurrentTime() * 1000;
   if (P.engine === 'spotify' && P.playing) return P.position + (performance.now() - sp.lastSync);
   return P.position;
 }
@@ -1087,7 +1238,7 @@ function livePosition() {
 let dragging = null;
 function renderProgress() {
   const pos = dragging?.el === $('#progress') ? dragging.value * P.duration : Math.min(livePosition(), P.duration || Infinity);
-  if (P.engine === 'youtube' && yt?.getDuration) P.duration = yt.getDuration() * 1000 || P.duration;
+  if (P.engine === 'youtube' && ytp()?.getDuration) P.duration = ytp().getDuration() * 1000 || P.duration;
   const pct = P.duration ? Math.min(100, (pos / P.duration) * 100) : 0;
   $('#progressFill').style.width = pct + '%';
   $('#timeCur').textContent = fmt(pos);

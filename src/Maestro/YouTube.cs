@@ -20,6 +20,10 @@ static partial class YouTube
     [GeneratedRegex(@"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")]
     private static partial Regex IsoDuration();
 
+    // The embed page's verdict, inside a JSON string: \"previewPlayabilityStatus\":{\"status\":\"OK\",\"playableInEmbed\":true
+    [GeneratedRegex(@"previewPlayabilityStatus\\?"":\{\\?""status\\?"":\\?""OK\\?"",\\?""playableInEmbed\\?"":true")]
+    private static partial Regex PlayableInEmbed();
+
     static string Thumb(string id) => $"https://i.ytimg.com/vi/{id}/hqdefault.jpg";
     static string Clean(string artist) => artist.EndsWith(" - Topic") ? artist[..^8] : artist;
 
@@ -141,6 +145,35 @@ static partial class YouTube
                     Thumb(vid), Net.ClockToMs(v.Str("lengthText.simpleText")));
             })
             .ToList();
+    }
+
+    // ---- embedding ------------------------------------------------------------
+
+    /// <summary>
+    /// Other uploads of the same recording that YouTube lets other apps play, best first. For videos whose owner blocks
+    /// embedding (or that were taken down). "Same recording" means the same length to within 3 s, so covers and live
+    /// versions that turn up in the search are left out; with no length to compare against, nothing is offered.
+    /// </summary>
+    public static async Task<List<Track>> EmbeddableCopies(string id, string title, string artist, long? durationMs, string apiKey)
+    {
+        var results = await Search($"{title} {artist}".Trim(), apiKey);
+        if ((durationMs ?? results.FirstOrDefault(t => t.Id == id)?.Duration) is not { } want) return [];
+        var candidates = results.Where(t => t.Id != id && t.Duration is { } d && Math.Abs(d - want) <= 3000).Take(5).ToList();
+        var ok = await Task.WhenAll(candidates.Select(t => Embeddable(t.Id)));
+        return candidates.Where((_, i) => ok[i]).ToList();
+    }
+
+    static async Task<bool> Embeddable(string id)
+    {
+        try
+        {
+            var headers = new Dictionary<string, string>(ConsentCookie) { ["Referer"] = "https://maestro.app/" };
+            return PlayableInEmbed().IsMatch(await Net.GetText("https://www.youtube.com/embed/" + id, headers));
+        }
+        catch (Exception e) when (e is UpstreamException or HttpRequestException or TaskCanceledException)
+        {
+            return false;
+        }
     }
 
     // ---- link resolution ------------------------------------------------------

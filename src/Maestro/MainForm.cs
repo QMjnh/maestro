@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
+using System.Text.Json.Nodes;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -13,9 +14,13 @@ sealed class MainForm : Form
     const string Origin = "https://maestro.app";
 
     readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(11, 13, 16) };
+    // Holds the hidden YouTube page. It must be shown, because Chromium won't start video in a page that never was, so
+    // it sits underneath the UI instead.
+    readonly Panel youTubeHost = new() { Bounds = new Rectangle(0, 0, 320, 180) };
     readonly SpotifyApp spotify = new();
     readonly Api api;
     CoreWebView2Environment? env;
+    YouTubePage? youTubePage;
 
     public MainForm()
     {
@@ -30,8 +35,10 @@ sealed class MainForm : Form
         StartPosition = FormStartPosition.Manual;
         RestorePlacement();
         Controls.Add(web);
+        Controls.Add(youTubeHost);
+        youTubeHost.SendToBack();
         Load += async (_, _) => await InitWebView();
-        FormClosing += (_, _) => { SavePlacement(); spotify.OnAppExit(); spotify.Dispose(); };
+        FormClosing += (_, _) => { SavePlacement(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
         _ = spotify.Prewarm(Store.GetSettings().SpotifyExePath);
     }
 
@@ -80,14 +87,15 @@ sealed class MainForm : Form
         {
             if (!e.Uri.StartsWith(Origin)) { e.Cancel = true; OpenExternal(e.Uri); }
         };
-        await core.AddScriptToExecuteOnDocumentCreatedAsync(Normalizer());
+        // Videos whose owner blocks embedding play on youtube.com in a hidden second browser.
+        youTubePage = new YouTubePage(env, youTubeHost, core);
+        core.WebMessageReceived += (_, e) =>
+        {
+            if (e.Source.StartsWith(Origin + "/") && JsonNode.Parse(e.WebMessageAsJson) is JsonObject o && o["ytPage"] is JsonObject msg)
+                _ = youTubePage.Handle(msg);
+        };
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(Program.Resource("normalizer.js"));
         core.Navigate(Origin + "/index.html");
-    }
-
-    static string Normalizer()
-    {
-        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("normalizer.js")!;
-        return new StreamReader(s).ReadToEnd();
     }
 
     static void OpenExternal(string uri)

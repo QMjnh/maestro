@@ -62,6 +62,15 @@ sealed class Api(SpotifyApp spotify)
                 throw new BadRequest("source must be spotify, youtube, or soundcloud");
             }
 
+            // Stand-ins for a YouTube video that won't play inside the app.
+            case ("GET", "/api/youtube/copies"):
+            {
+                var id = query["id"] ?? "";
+                if (id.Length == 0) throw new BadRequest("id is required");
+                var duration = long.TryParse(query["duration"], out var ms) && ms > 0 ? ms : (long?)null;
+                return new { items = await YouTube.EmbeddableCopies(id, query["title"] ?? "", query["artist"] ?? "", duration, settings.YoutubeApiKey) };
+            }
+
             // Recommendations to keep playing after the queue runs out.
             case ("GET", "/api/radio"):
             {

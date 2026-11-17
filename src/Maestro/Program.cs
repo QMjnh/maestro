@@ -2,6 +2,13 @@ namespace Maestro;
 
 static class Program
 {
+    /// <summary>A text file embedded in the exe (see Maestro.csproj).</summary>
+    public static string Resource(string name)
+    {
+        using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream(name)!;
+        return new StreamReader(s).ReadToEnd();
+    }
+
     [STAThread]
     static void Main()
     {
