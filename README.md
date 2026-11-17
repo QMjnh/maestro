@@ -1,18 +1,34 @@
 <p align="center">
-  <img src="src/Maestro/wwwroot/icon.png" width="80" height="80" alt="Maestro Music Aggregator Logo">
+  <img src="src/Maestro/wwwroot/icon.png" width="80" height="80" alt="Maestro logo">
 </p>
 
-# Maestro — The Universal Music Streaming Aggregator App
+# Maestro: Spotify, YouTube, SoundCloud & more in one music player
 
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue?style=flat-square)](https://github.com/QMjnh/maestro)
-[![Category](https://img.shields.io/badge/category-Music%20Aggregator-orange?style=flat-square)](https://github.com/QMjnh/maestro)
+**Your music, all in one place.** Maestro is a Windows music player that brings **Spotify**, **YouTube**, and
+**SoundCloud** together. Search everywhere, queue anything, and listen without switching apps.
+
+**No API keys** · **Ad-free** · **Windows 10 / 11**
+
+[![Download for Windows](https://img.shields.io/badge/Download-Maestro%20for%20Windows-1db954?style=for-the-badge&logo=windows)](https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe)
+[![Website](https://img.shields.io/badge/Website-qmjnh.github.io%2Fmaestro-333?style=for-the-badge)](https://qmjnh.github.io/maestro/)
+
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue?style=flat-square)](#install)
+[![Latest release](https://img.shields.io/github/v/release/QMjnh/maestro?style=flat-square)](https://github.com/QMjnh/maestro/releases/latest)
 [![License](https://img.shields.io/badge/license-BUSL%201.1%20(personal%20use%20free)-yellow?style=flat-square)](LICENSE)
-[![Agents](https://img.shields.io/badge/agent--optimized-llms.txt-purple?style=flat-square)](docs/llms.txt)
 
-**Maestro** is a free **music aggregator app** for Windows that unifies **Spotify**, **YouTube**, and **SoundCloud** into one seamless desktop player. Instead of switching between three separate apps or browser tabs, Maestro aggregates music across all three services: search them side by side, paste links from any of them, and build one shared queue or playlist that mixes them together. Maestro switches between sources automatically as tracks end, with built-in volume normalization across all platforms. Free for personal use — see [License](#license).
+- **Three services, one player.** Play Spotify, YouTube, and SoundCloud from one window.
+- **One search for everything.** Results from all three, side by side.
+- **Mixed playlists and one queue.** Put songs from any service together; Maestro hands off between them as each
+  song ends.
+- **No developer API keys.** No Spotify developer app, no YouTube API key, nothing to configure.
+- **Ad-free.** No ads in Maestro. Patch Spotify with [SpotX](https://github.com/SpotX-Official/SpotX) and Spotify
+  plays ad-free too, even on a free account.
+- **Even volume.** One slider for everything, with YouTube and SoundCloud leveled to match Spotify.
 
-- **Spotify** plays through your **Spotify desktop app** (SpotX works great), so a free account is all you need.
-  There are no API keys and no Premium requirement: Maestro uses the app's own player and search (details below).
+How each service plays:
+
+- **Spotify** plays through your **Spotify desktop app**. Maestro uses the app's own player and search (details
+  [below](#how-the-spotify-side-works)), so there are no API keys and no Premium requirement.
 - **YouTube** plays in YouTube's embedded player inside Maestro's window. Search needs no API key.
 - **SoundCloud** plays in SoundCloud's embedded player inside Maestro's window. Search needs no API key.
 
@@ -21,7 +37,13 @@ window? Open Spotify like you normally would: it shows up, and from then on it's
 
 ## Install
 
-Paste this into PowerShell (Windows 10/11, no admin needed):
+**Download:** [Maestro-win-x64.exe](https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe)
+from the [latest release](https://github.com/QMjnh/maestro/releases/latest). It's a single portable exe with
+nothing else to install. It isn't code-signed yet, so Windows SmartScreen may warn the first time: choose
+*More info › Run anyway*. The exe is built from this repo by the [release workflow](.github/workflows/release.yml).
+
+**Or install with PowerShell** to get a Start menu entry, a `maestro` command, and one-command updates
+(Windows 10/11, no admin needed; you can [read the script](install.ps1) first):
 
 ```powershell
 irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
@@ -123,14 +145,20 @@ A music streaming aggregator app connects several streaming services in one play
 ### What is Maestro?
 Maestro is a universal music streaming aggregator app for Windows, free for personal use. It brings Spotify, YouTube, and SoundCloud into one desktop player with unified search, one shared queue, and automatic volume leveling across sources.
 
+### Do I need API keys or a developer account?
+No. Maestro needs no Spotify developer app, no YouTube Data API key, and no SoundCloud API registration. Install it, open it, and search.
+
 ### Do I need Spotify Premium to use Maestro?
-No. Maestro plays Spotify songs through your local Spotify desktop app (via the Chrome DevTools Protocol), so a free Spotify account is enough. No Premium and no developer API credentials are needed.
+No. Maestro plays Spotify songs through your local Spotify desktop app (via the Chrome DevTools Protocol), so a free Spotify account is enough. Use Spotify's installer from [spotify.com](https://www.spotify.com/download); the Microsoft Store version isn't supported.
+
+### Is Maestro ad-free?
+Yes. Maestro shows no ads of its own. Spotify plays through your Spotify desktop app, so patch it with [SpotX](https://github.com/SpotX-Official/SpotX) and Spotify's ads are gone too. YouTube videos that Maestro plays from youtube.com have their ads removed before they load.
 
 ### Can I mix Spotify and YouTube songs in the same playlist?
 Yes. Search all three services side by side or paste links from any of them, and add every track to one queue or one Maestro playlist. Playback switches sources automatically as tracks end.
 
-### Is Maestro free? Can I use it commercially?
-Free for personal, noncommercial use. Maestro is licensed under [BUSL 1.1](LICENSE): its source is fully available on GitHub, but production use by a business (internal or external) requires a separate license from the author. Every release also converts automatically to GPL-2.0-or-later four years after its release — version 0.0.2 does so on 2030-11-10.
+### Is Maestro free? Is it open source? Can I use it commercially?
+Free for personal, noncommercial use. Maestro is source-available under [BUSL 1.1](LICENSE) rather than an OSI open-source license: its source is fully available on GitHub, but production use by a business (internal or external) requires a separate license from the author. Every release also converts automatically to GPL-2.0-or-later four years after its release — version 0.0.2 does so on 2030-11-10.
 
 ### How does Maestro handle volume differences between services?
 Maestro measures the loudness of each YouTube and SoundCloud track and evens it out to match Spotify's level, so you stop reaching for the volume slider between songs.

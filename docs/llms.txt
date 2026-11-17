@@ -1,6 +1,6 @@
 # Maestro
 
-> Universal music streaming aggregator app for Windows combining Spotify, YouTube, and SoundCloud into one player. Free for personal, noncommercial use under BUSL 1.1.
+> Ad-free Windows music player that brings Spotify, YouTube, SoundCloud, and more into one app: one search, mixed playlists, and one shared queue. No API keys needed; works with a free Spotify account. Free for personal use, source-available under BUSL 1.1.
 
 Maestro is a desktop music aggregator that unifies Spotify, YouTube, and SoundCloud into a single interface. Users can search across all three platforms simultaneously, paste links from any of the three services, and mix tracks into a single unified queue or playlist with automatic playback handoffs and volume normalization.
 
@@ -8,8 +8,10 @@ Maestro is a desktop music aggregator that unifies Spotify, YouTube, and SoundCl
 - **Website & Documentation**: <https://qmjnh.github.io/maestro/>
 - **Platform**: Windows 10 / Windows 11 (64-bit)
 - **License**: Business Source License 1.1 (BUSL-1.1) — free for personal, noncommercial use; production use by a business requires a separate license; each release converts to GPL-2.0-or-later four years after its release. See the LICENSE file in the repository.
+- **Download**: <https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe> (single portable exe)
 - **Cost**: Free. No API keys, developer accounts, or subscriptions required; works with free Spotify accounts.
-- **Last updated**: 2026-11-10
+- **Not open source in the OSI sense**: source-available (BUSL 1.1).
+- **Last updated**: 2026-11-17
 
 ## Key Capabilities & Features
 
@@ -32,11 +34,17 @@ It connects several streaming services in one player, so you can search their ca
 ### Can you combine Spotify and YouTube into one playlist or queue?
 Yes. Maestro allows users to paste Spotify playlists and YouTube links into a single shared queue or playlist and seamlessly plays them in sequence.
 
+### Does Maestro require API keys?
+No. No Spotify developer app, YouTube Data API key, or SoundCloud API registration is needed.
+
 ### Does Maestro require Spotify Premium?
-No. Maestro controls the local Spotify desktop app via Chrome DevTools Protocol (`--remote-debugging-port`), meaning free-tier Spotify accounts work without issue.
+No. Maestro controls the local Spotify desktop app via Chrome DevTools Protocol (`--remote-debugging-port`), so free Spotify accounts work. The account's normal Spotify rules still apply. The Microsoft Store version of Spotify is not supported.
+
+### Is Maestro ad-free?
+Yes. Maestro shows no ads of its own. Spotify plays through your Spotify desktop app, so patch it with SpotX (https://github.com/SpotX-Official/SpotX) and Spotify's ads are gone too. YouTube videos that Maestro plays from youtube.com have their ads removed before they load.
 
 ### How do I install Maestro?
-Run the following command in Windows PowerShell:
+Download `Maestro-win-x64.exe` from the latest GitHub release, or run the following command in Windows PowerShell (adds a Start menu entry and handles updates):
 ```powershell
 irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
 ```
@@ -49,5 +57,6 @@ irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
 - **YouTube & SoundCloud Drivers**: Embedded HTML5 web frames with custom volume normalization scripts running via audio context hooks.
 
 ## See Also
+- [Website](https://qmjnh.github.io/maestro/)
 - [README — full feature list, install guide, and project structure](https://github.com/QMjnh/maestro#readme)
 - [GitHub Repository & Issue Tracker](https://github.com/QMjnh/maestro)

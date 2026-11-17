@@ -3,35 +3,32 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Maestro — The Universal Music Streaming Aggregator App</title>
-  
-  <meta name="description" content="Maestro is a free music streaming aggregator app for Windows (free for personal use). Search Spotify, YouTube, and SoundCloud side-by-side, build one unified queue, and play without Spotify Premium or API keys." />
-  <meta name="keywords" content="music aggregator, streaming aggregator, music aggregator app, cross-platform music player, spotify youtube aggregator, soundcloud aggregator, unified music player, free music player windows" />
-  <meta name="author" content="Maestro" />
+  <title>Maestro: Spotify, YouTube, SoundCloud &amp; More in One Music Player</title>
+  <meta name="description" content="Maestro brings Spotify, YouTube, SoundCloud and more into one free, ad-free Windows music player. Search, queue and play across services. No API keys." />
   <meta name="robots" content="index, follow" />
   <meta name="theme-color" content="#0f1115" />
   <link rel="canonical" href="https://qmjnh.github.io/maestro/" />
   <link rel="alternate" type="text/plain" href="llms.txt" title="LLM context" />
+  <link rel="icon" type="image/png" href="icon.png" />
 
-  <!-- Open Graph / Facebook -->
+  <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Maestro" />
   <meta property="og:url" content="https://qmjnh.github.io/maestro/" />
-  <meta property="og:title" content="Maestro — Universal Music Streaming Aggregator" />
-  <meta property="og:description" content="One player for Spotify, YouTube, and SoundCloud. Unified search, combined queues, and automatic volume normalization." />
-  <meta property="og:image" content="https://qmjnh.github.io/maestro/icon.png" />
-  <meta property="og:image:alt" content="Maestro app icon" />
+  <meta property="og:title" content="Maestro: Spotify, YouTube, SoundCloud &amp; more in one music player" />
+  <meta property="og:description" content="Search everywhere, queue anything, and listen without switching apps. Free, ad-free Windows music player. No API keys." />
+  <meta property="og:image" content="https://qmjnh.github.io/maestro/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Maestro: Spotify, YouTube, SoundCloud and more in one music player" />
 
-  <!-- Twitter -->
-  <meta property="twitter:card" content="summary" />
-  <meta property="twitter:url" content="https://qmjnh.github.io/maestro/" />
-  <meta property="twitter:title" content="Maestro — Universal Music Streaming Aggregator" />
-  <meta property="twitter:description" content="Free for personal use: music aggregator app for Spotify, YouTube, and SoundCloud on Windows." />
-  <meta property="twitter:image" content="https://qmjnh.github.io/maestro/icon.png" />
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Maestro: Spotify, YouTube, SoundCloud &amp; more in one music player" />
+  <meta name="twitter:description" content="Search everywhere, queue anything, and listen without switching apps. Free, ad-free Windows music player. No API keys." />
+  <meta name="twitter:image" content="https://qmjnh.github.io/maestro/og-image.png" />
 
-  <link rel="icon" type="image/png" href="icon.png" />
-
-  <!-- Structured Data (JSON-LD) for Search Engines & AI Crawlers -->
+  <!-- Structured data (JSON-LD). Keep the FAQ here in sync with the visible FAQ below. -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -41,30 +38,26 @@
         "@id": "https://qmjnh.github.io/maestro/#software",
         "name": "Maestro",
         "applicationCategory": "MultimediaApplication",
-        "applicationSubCategory": "Music Streaming Aggregator",
+        "applicationSubCategory": "Music player",
         "operatingSystem": "Windows 10, Windows 11",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        },
-        "description": "Maestro is a universal music streaming aggregator app for Windows, free for personal use. It seamlessly aggregates Spotify, YouTube, and SoundCloud into one desktop player with unified multi-service search, shared queues, and automatic volume normalization.",
+        "description": "Maestro is a Windows music player that brings Spotify, YouTube, and SoundCloud together: one search across all three, mixed playlists, one shared queue with automatic handoffs between services, and volume leveling across sources. No API keys needed; works with a free Spotify account.",
         "url": "https://qmjnh.github.io/maestro/",
-        "downloadUrl": "https://github.com/QMjnh/maestro/releases",
-        "softwareRequirements": "Windows 10/11, Spotify desktop app (optional for Spotify songs)",
+        "image": "https://qmjnh.github.io/maestro/og-image.png",
+        "downloadUrl": "https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe",
+        "softwareRequirements": "Windows 10 or 11 (64-bit). Spotify desktop app for Spotify songs (optional).",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "featureList": [
-          "Cross-service music streaming aggregator",
-          "Unified simultaneous search across Spotify, YouTube, and SoundCloud",
-          "Combined multi-platform playback queue and mixed playlists",
-          "Automatic loudness and volume normalization between platforms",
-          "Plays via official local Spotify desktop app with no Spotify Premium requirement",
-          "Zero API keys or developer registrations required"
+          "Play Spotify, YouTube, and SoundCloud in one player",
+          "One search across Spotify, YouTube, and SoundCloud",
+          "Playlists and a shared queue that mix all three services",
+          "Automatic handoffs between services as tracks end",
+          "Volume normalization across sources",
+          "No developer API keys or accounts needed",
+          "Ad-free listening",
+          "Works with a free Spotify account through the Spotify desktop app"
         ],
-        "author": {
-          "@type": "Organization",
-          "name": "Maestro contributors",
-          "url": "https://github.com/QMjnh/maestro"
-        },
+        "author": { "@type": "Person", "name": "QMjnh", "url": "https://github.com/QMjnh" },
+        "codeRepository": "https://github.com/QMjnh/maestro",
         "license": "https://spdx.org/licenses/BUSL-1.1.html",
         "isAccessibleForFree": true
       },
@@ -74,59 +67,48 @@
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "What is a music streaming aggregator app?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "A music streaming aggregator app connects multiple streaming services into a single interface. Instead of opening separate apps for Spotify, YouTube, and SoundCloud, an aggregator lets you search, queue, and play audio across all of them in one place."
-            }
-          },
-          {
-            "@type": "Question",
             "name": "What is Maestro?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Maestro is a universal music streaming aggregator app for Windows, free for personal use. It unifies Spotify, YouTube, and SoundCloud into a single desktop player with concurrent search and a shared queue."
-            }
+            "acceptedAnswer": { "@type": "Answer", "text": "Maestro is a Windows music player that brings Spotify, YouTube, and SoundCloud into one app. You search all three at once, build playlists and a queue that mix them, and Maestro switches between services automatically as songs end." }
           },
           {
             "@type": "Question",
-            "name": "Do I need Spotify Premium to use Maestro?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "No. Maestro works with standard free Spotify accounts by connecting to your local Spotify desktop app via Chrome DevTools Protocol debugging. It also plays YouTube and SoundCloud with no subscriptions or API keys."
-            }
+            "name": "Do I need API keys or a developer account?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Maestro needs no Spotify developer app, no YouTube Data API key, and no SoundCloud API registration. Install it, open it, and search." }
           },
           {
             "@type": "Question",
-            "name": "Can I mix Spotify, YouTube, and SoundCloud in the same queue or playlist?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Yes. Maestro is built specifically to allow seamless mixing of tracks from Spotify, YouTube, and SoundCloud. As each track finishes, Maestro automatically transitions to the next service."
-            }
+            "name": "Do I need Spotify Premium?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Spotify songs play through your own Spotify desktop app, signed in to your account, so a free account works. Use Spotify's installer from spotify.com; the Microsoft Store version isn't supported." }
+          },
+          {
+            "@type": "Question",
+            "name": "How does Maestro play Spotify without API keys?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Maestro starts your installed Spotify desktop app with its local debugging port enabled and talks to it through the Chrome DevTools Protocol. It uses the same player and search the Spotify app itself uses, so no developer credentials are involved. The port only accepts connections from your own computer." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I mix Spotify, YouTube, and SoundCloud in one playlist or queue?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Add tracks from any of the three services to one queue or one Maestro playlist. When a track ends, Maestro starts the next one on whichever service it comes from." }
           },
           {
             "@type": "Question",
             "name": "How does Maestro handle volume differences between services?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Maestro includes real-time audio volume normalization, analyzing loudness on YouTube and SoundCloud tracks and evening them out to match Spotify's playback level."
-            }
+            "acceptedAnswer": { "@type": "Answer", "text": "One slider controls all three services, and Maestro measures each YouTube and SoundCloud track and adjusts it to match Spotify's level, so you don't have to touch the volume between songs." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Maestro ad-free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Maestro shows no ads of its own. Spotify plays through your Spotify desktop app, so patch it with SpotX and Spotify's ads are gone too. YouTube videos that Maestro plays from youtube.com have their ads removed before they load." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Maestro free? Is it open source?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Maestro is free for personal use and its full source code is on GitHub. It is source-available under the Business Source License 1.1 rather than an OSI open-source license: production use by a business needs a separate license, and each release converts to GPL-2.0-or-later four years after it is published." }
           },
           {
             "@type": "Question",
             "name": "What platforms does Maestro support?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Maestro is built for Windows 10 and Windows 11 (64-bit). Support for macOS and Linux is not available yet."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "Is Maestro free?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Yes. Maestro is free for individual, personal use, and its complete source code is available on GitHub under the Business Source License 1.1. Production use by a business requires a separate license, and every release converts to GPL four years after its release."
-            }
+            "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 and Windows 11 (64-bit). macOS and Linux are not supported yet." }
           }
         ]
       }
@@ -151,32 +133,59 @@
       background-color: var(--bg);
       color: var(--text);
       line-height: 1.6;
-      padding: 0;
     }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    code { font-family: "Cascadia Code", Consolas, Monaco, monospace; font-size: 0.9em; }
     .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-    
+
     /* Header & Hero */
     header {
-      padding: 48px 0 32px;
+      padding: 48px 0 40px;
       text-align: center;
       border-bottom: 1px solid var(--card-border);
     }
-    .logo { width: 96px; height: 96px; margin-bottom: 16px; border-radius: 20px; }
-    h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
-    .tagline { font-size: 1.25rem; color: var(--text-muted); max-width: 680px; margin: 0 auto 28px; }
-    
+    .logo { width: 96px; height: 96px; margin-bottom: 8px; border-radius: 20px; }
+    h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 12px; }
+    .headline { font-size: 1.9rem; font-weight: 700; line-height: 1.25; max-width: 760px; margin: 0 auto 14px; }
+    .tagline { font-size: 1.2rem; color: var(--text-muted); max-width: 680px; margin: 0 auto 20px; }
+    .pills { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 28px; }
+    .pill { border: 1px solid var(--card-border); border-radius: 999px; padding: 4px 14px; font-size: 0.9rem; font-weight: 600; }
+    .pill.green { color: #1db954; border-color: #1db95466; }
+    .pill.orange { color: #ff8c28; border-color: #ff8c2866; }
+    .pill.red { color: #f04646; border-color: #f0464666; }
+
+    .cta-links {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover { background: var(--accent-hover); text-decoration: none; }
+    .btn-secondary { background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border); }
+    .btn-secondary:hover { background: var(--card-border); text-decoration: none; }
+
+    .or { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px; }
     .install-box {
       background: var(--code-bg);
       border: 1px solid var(--card-border);
       border-radius: 12px;
-      padding: 16px 20px;
+      padding: 14px 18px;
       display: inline-flex;
       align-items: center;
       gap: 12px;
       font-family: "Cascadia Code", Consolas, Monaco, monospace;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       color: #38bdf8;
       max-width: 100%;
       overflow-x: auto;
@@ -193,28 +202,9 @@
       transition: all 0.2s;
     }
     .copy-btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+    .note { color: var(--text-muted); font-size: 0.85rem; max-width: 640px; margin: 14px auto 0; }
 
-    .cta-links {
-      margin-top: 24px;
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-    .btn {
-      display: inline-block;
-      padding: 10px 22px;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 0.95rem;
-      transition: background 0.2s;
-    }
-    .btn-primary { background: var(--accent); color: #000; }
-    .btn-primary:hover { background: var(--accent-hover); text-decoration: none; }
-    .btn-secondary { background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border); }
-    .btn-secondary:hover { background: var(--card-border); text-decoration: none; }
-
-    /* Features */
+    /* Sections */
     section { padding: 48px 0; }
     h2 { font-size: 1.75rem; font-weight: 700; margin-bottom: 24px; text-align: center; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
@@ -226,6 +216,10 @@
     }
     .card h3 { font-size: 1.15rem; margin-bottom: 8px; color: var(--accent); }
     .card p { color: var(--text-muted); font-size: 0.95rem; }
+    .prose { max-width: 760px; margin: 0 auto; }
+    .prose p, .prose li { color: var(--text-muted); margin-bottom: 12px; }
+    .prose ul { padding-left: 22px; }
+    .prose strong { color: var(--text); }
 
     /* Comparison Table */
     .table-wrap { overflow-x: auto; margin-top: 20px; }
@@ -254,65 +248,94 @@
       color: var(--text-muted);
       font-size: 0.9rem;
     }
-    .footer-links { display: flex; justify-content: center; gap: 20px; margin-bottom: 12px; }
+    .footer-links { display: flex; justify-content: center; gap: 20px; margin-bottom: 12px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
 
   <header>
     <div class="container">
-      <img src="icon.png" alt="Maestro Music Aggregator Logo" class="logo" />
+      <img src="icon.png" alt="Maestro logo" class="logo" width="96" height="96" />
       <h1>Maestro</h1>
-      <p class="tagline">The Universal Music Streaming Aggregator App for <strong>Spotify</strong>, <strong>YouTube</strong>, and <strong>SoundCloud</strong>.</p>
-      
+      <p class="headline">One music player for Spotify, YouTube, SoundCloud, and more</p>
+      <p class="tagline">Search everywhere, queue anything, and listen without switching apps. Build playlists that mix all three services, and Maestro hands off between them as each song ends.</p>
+
+      <div class="pills">
+        <span class="pill green">No API keys</span>
+        <span class="pill orange">Ad-free</span>
+        <span class="pill red">Windows 10 / 11</span>
+      </div>
+
+      <div class="cta-links">
+        <a href="https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe" class="btn btn-primary">Download for Windows</a>
+        <a href="https://github.com/QMjnh/maestro" class="btn btn-secondary">Source on GitHub</a>
+        <a href="#how-it-works" class="btn btn-secondary">How it works</a>
+      </div>
+
+      <p class="or">or install with one PowerShell command (adds a Start menu entry; run it again to update):</p>
       <div class="install-box">
         <span id="cmdText">irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex</span>
         <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('cmdText').innerText); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 2000)">Copy</button>
       </div>
-
-      <div class="cta-links">
-        <a href="https://github.com/QMjnh/maestro" class="btn btn-primary" target="_blank" rel="noopener">View on GitHub</a>
-        <a href="https://github.com/QMjnh/maestro/releases" class="btn btn-secondary" target="_blank" rel="noopener">Releases &amp; Changelog</a>
-        <a href="llms.txt" class="btn btn-secondary">Agent Context (llms.txt)</a>
-      </div>
+      <p class="note">The download is a single portable <code>.exe</code>. It isn't code-signed yet, so Windows SmartScreen may warn the first time: choose <em>More info › Run anyway</em>. You can read the <a href="https://github.com/QMjnh/maestro/blob/main/install.ps1">installer script</a> and <a href="https://github.com/QMjnh/maestro/blob/main/.github/workflows/release.yml">release build</a> on GitHub.</p>
     </div>
   </header>
 
   <main class="container">
-    <!-- Why an Aggregator Section -->
     <section>
-      <h2>Why Use Maestro as Your Music Aggregator?</h2>
+      <h2>Your music, all in one place</h2>
       <div class="grid">
         <div class="card">
-          <h3>Unified multi-service search</h3>
-          <p>Search Spotify, YouTube, and SoundCloud simultaneously side-by-side with a single query. Filter or view all results at once.</p>
+          <h3>Three services, one player</h3>
+          <p>Play Spotify, YouTube, and SoundCloud from one window instead of juggling three apps and browser tabs.</p>
         </div>
         <div class="card">
-          <h3>Mixed multi-source queues</h3>
-          <p>Drag, drop, and combine Spotify tracks, YouTube videos, and SoundCloud sets into one playlist. Maestro switches sources automatically as songs end.</p>
+          <h3>One search for everything</h3>
+          <p>Type once and see Spotify, YouTube, and SoundCloud results side by side, or filter to one service.</p>
         </div>
         <div class="card">
-          <h3>Automatic volume normalization</h3>
-          <p>Dynamic audio leveling balances volume between Spotify, YouTube, and SoundCloud so you never have to adjust your volume between tracks.</p>
+          <h3>Mixed playlists and queue</h3>
+          <p>Put a Spotify track, a YouTube live set, and a SoundCloud remix in the same playlist. Drag to reorder, shuffle, repeat.</p>
         </div>
         <div class="card">
-          <h3>No Premium or API keys needed</h3>
-          <p>Spotify plays natively through your local Spotify desktop app (free accounts fully supported). YouTube and SoundCloud stream without API keys.</p>
+          <h3>No API keys, no setup</h3>
+          <p>No developer apps to register and no credentials to paste. Install it, open it, and search.</p>
         </div>
         <div class="card">
-          <h3>Universal link paste</h3>
-          <p>Paste any URL from Spotify, YouTube, or SoundCloud into Maestro to instantly play, enqueue, or save up to 100 tracks to your personal library.</p>
+          <h3>Ad-free</h3>
+          <p>No ads in Maestro. Patch Spotify with <a href="https://github.com/SpotX-Official/SpotX">SpotX</a> and Spotify plays ad-free too, even on a free account.</p>
         </div>
         <div class="card">
-          <h3>Privacy-first desktop architecture</h3>
-          <p>Runs 100% locally on your Windows machine with an embedded WebView2 UI and in-process C# API. Your listening history stays on your computer.</p>
+          <h3>Even volume across sources</h3>
+          <p>One slider for everything. Maestro levels each YouTube and SoundCloud track to match Spotify, so you stop reaching for the volume.</p>
+        </div>
+        <div class="card">
+          <h3>Paste any link</h3>
+          <p>Spotify tracks, albums, and playlists; YouTube videos and playlists; SoundCloud tracks and sets. Play them, queue them, or save them.</p>
+        </div>
+        <div class="card">
+          <h3>Home and autoplay</h3>
+          <p>Recommendations from your own listening, plus autoplay from Spotify radio, YouTube Mix, and SoundCloud related tracks when the queue runs low.</p>
+        </div>
+        <div class="card">
+          <h3>Your data stays on your PC</h3>
+          <p>No Maestro account and no Maestro server. Playlists, favorites, and listening history are files on your computer.</p>
         </div>
       </div>
     </section>
 
-    <!-- Comparison Matrix -->
+    <section id="how-it-works">
+      <h2>How it works</h2>
+      <div class="prose">
+        <p><strong>Spotify</strong> plays in the Spotify desktop app you already have. That app is a Chromium page signed in to your account. Maestro starts it with a local debugging port and drives it through the Chrome DevTools Protocol, using the same player and search Spotify's own interface uses. That is why no developer API keys or Premium subscription are involved. Spotify stays hidden unless you open it yourself.</p>
+        <p><strong>YouTube and SoundCloud</strong> play in their own embedded players inside Maestro's window. Search uses their public web clients, so there are no API keys here either.</p>
+        <p><strong>Handoffs.</strong> When a song ends, Maestro starts the next one on whichever service it comes from. Spotify songs hand off about 0.3 seconds early, so Spotify's own autoplay never interrupts your queue. If you skip inside Spotify or with media keys, Maestro follows along.</p>
+        <p><strong>Security.</strong> While Spotify runs with the debugging port, other programs on <em>this computer</em> can control the Spotify app through it. The port accepts only local connections, and restarting Spotify normally removes it. More details are in the <a href="https://github.com/QMjnh/maestro#how-the-spotify-side-works">README</a>.</p>
+      </div>
+    </section>
+
     <section>
-      <h2>How Maestro Compares</h2>
+      <h2>How Maestro compares</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -334,7 +357,7 @@
             </tr>
             <tr>
               <td><strong>Plays from several services at once</strong></td>
-              <td class="highlight">Yes — Spotify, YouTube, SoundCloud</td>
+              <td class="highlight">Yes: Spotify, YouTube, SoundCloud</td>
               <td>No (syncs playlist metadata only)</td>
               <td>YouTube + SoundCloud</td>
               <td>YouTube audio only</td>
@@ -379,43 +402,52 @@
       </div>
     </section>
 
-    <!-- Frequently Asked Questions -->
-    <section>
-      <h2>Frequently Asked Questions (FAQ)</h2>
-
-      <div class="faq-item">
-        <h3>What is a music streaming aggregator app?</h3>
-        <p>A music streaming aggregator app connects multiple streaming services into a single interface. Instead of opening separate apps for Spotify, YouTube, and SoundCloud, an aggregator lets you search, queue, and play audio across all of them in one place.</p>
-      </div>
+    <section id="faq">
+      <h2>Frequently asked questions</h2>
 
       <div class="faq-item">
         <h3>What is Maestro?</h3>
-        <p>Maestro is a universal music streaming aggregator app for Windows, free for personal use. It unifies Spotify, YouTube, and SoundCloud into a single desktop player with concurrent search and a shared queue.</p>
+        <p>Maestro is a Windows music player that brings Spotify, YouTube, and SoundCloud into one app. You search all three at once, build playlists and a queue that mix them, and Maestro switches between services automatically as songs end.</p>
       </div>
 
       <div class="faq-item">
-        <h3>Do I need Spotify Premium to use Maestro?</h3>
-        <p>No. Maestro works with standard free Spotify accounts by connecting to your local Spotify desktop app via Chrome DevTools Protocol debugging. It also plays YouTube and SoundCloud with no subscriptions or API keys.</p>
+        <h3>Do I need API keys or a developer account?</h3>
+        <p>No. Maestro needs no Spotify developer app, no YouTube Data API key, and no SoundCloud API registration. Install it, open it, and search.</p>
       </div>
 
       <div class="faq-item">
-        <h3>Can I mix Spotify, YouTube, and SoundCloud in the same queue or playlist?</h3>
-        <p>Yes. Maestro is built specifically to allow seamless mixing of tracks from Spotify, YouTube, and SoundCloud. As each track finishes, Maestro automatically transitions to the next service.</p>
+        <h3>Do I need Spotify Premium?</h3>
+        <p>No. Spotify songs play through your own Spotify desktop app, signed in to your account, so a free account works. Use Spotify's installer from spotify.com; the Microsoft Store version isn't supported.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>How does Maestro play Spotify without API keys?</h3>
+        <p>Maestro starts your installed Spotify desktop app with its local debugging port enabled and talks to it through the Chrome DevTools Protocol. It uses the same player and search the Spotify app itself uses, so no developer credentials are involved. The port only accepts connections from your own computer.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I mix Spotify, YouTube, and SoundCloud in one playlist or queue?</h3>
+        <p>Yes. Add tracks from any of the three services to one queue or one Maestro playlist. When a track ends, Maestro starts the next one on whichever service it comes from.</p>
       </div>
 
       <div class="faq-item">
         <h3>How does Maestro handle volume differences between services?</h3>
-        <p>Maestro includes real-time audio volume normalization, analyzing loudness on YouTube and SoundCloud tracks and evening them out to match Spotify's playback level.</p>
+        <p>One slider controls all three services, and Maestro measures each YouTube and SoundCloud track and adjusts it to match Spotify's level, so you don't have to touch the volume between songs.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is Maestro ad-free?</h3>
+        <p>Yes. Maestro shows no ads of its own. Spotify plays through your Spotify desktop app, so patch it with <a href="https://github.com/SpotX-Official/SpotX">SpotX</a> and Spotify's ads are gone too. YouTube videos that Maestro plays from youtube.com have their ads removed before they load.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is Maestro free? Is it open source?</h3>
+        <p>Maestro is free for personal use and its full source code is on GitHub. It is source-available under the <a href="https://github.com/QMjnh/maestro/blob/main/LICENSE">Business Source License 1.1</a> rather than an OSI open-source license: production use by a business needs a separate license, and each release converts to GPL-2.0-or-later four years after it is published.</p>
       </div>
 
       <div class="faq-item">
         <h3>What platforms does Maestro support?</h3>
-        <p>Maestro is built for Windows 10 and Windows 11 (64-bit). Support for macOS and Linux is not available yet.</p>
-      </div>
-
-      <div class="faq-item">
-        <h3>Is Maestro free?</h3>
-        <p>Yes. Maestro is free for individual, personal use, and its complete source code is available on GitHub under the Business Source License 1.1. Production use by a business requires a separate license, and every release converts to GPL four years after its release.</p>
+        <p>Windows 10 and Windows 11 (64-bit). macOS and Linux are not supported yet.</p>
       </div>
     </section>
   </main>
@@ -425,10 +457,10 @@
       <div class="footer-links">
         <a href="https://github.com/QMjnh/maestro">GitHub</a>
         <a href="https://github.com/QMjnh/maestro/releases">Releases</a>
+        <a href="https://github.com/QMjnh/maestro/issues">Issues</a>
         <a href="llms.txt">llms.txt</a>
-        <a href="sitemap.xml">Sitemap</a>
       </div>
-      <p>&copy; 2026 Maestro. Free for personal use. Universal music streaming aggregator app, licensed under BUSL 1.1.</p>
+      <p>Maestro: Spotify, YouTube, SoundCloud, and more in one music player. Free for personal use, source-available under BUSL 1.1.<br />Not affiliated with Spotify, YouTube, or SoundCloud.</p>
     </div>
   </footer>
 
