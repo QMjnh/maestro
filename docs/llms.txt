@@ -11,7 +11,7 @@ Maestro is a desktop music aggregator that unifies Spotify, YouTube, and SoundCl
 - **Download**: <https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe> (single portable exe)
 - **Cost**: Free. No API keys, developer accounts, or subscriptions required; works with free Spotify accounts.
 - **Not open source in the OSI sense**: source-available (BUSL 1.1).
-- **Last updated**: 2026-11-17
+- **Last updated**: 2026-11-21
 
 ## Key Capabilities & Features
 
@@ -22,6 +22,7 @@ Maestro is a desktop music aggregator that unifies Spotify, YouTube, and SoundCl
 - **Smart Recommendations & Autoplay**: Combines Spotify song radio, YouTube Mixes, and SoundCloud related tracks to continue playing personalized music when the user's queue ends.
 - **Link Resolver**: Paste any Spotify song/album/playlist link, YouTube video/playlist URL, or SoundCloud track/set URL to play instantly or import up to 100 tracks.
 - **Zero Configuration**: No developer accounts, Spotify Premium subscription, or API keys needed.
+- **AI Agent Control (MCP)**: `Maestro.exe mcp` is a built-in Model Context Protocol server (stdio) exposing everything the UI can do as tools: search, play, pause, skip, seek, volume, shuffle, repeat, autoplay, queue editing, favorites, playlists, home recommendations, and settings. `Maestro.exe agent <tool> key=value ...` runs the same tools from a shell.
 
 ## Common Questions
 
@@ -48,6 +49,9 @@ Download `Maestro-win-x64.exe` from the latest GitHub release, or run the follow
 ```powershell
 irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
 ```
+
+### Can an AI agent control Maestro?
+Yes. Maestro has a built-in MCP server. Add it to Claude Code with `claude mcp add maestro -- maestro mcp`, or to any MCP client with command `maestro` (or the full path to `Maestro.exe`) and argument `mcp`. Agents can then do anything the user can do in the window: search all three services, play tracks or links, control playback, edit the queue, like songs, and create or edit playlists. If Maestro isn't open, the first tool call opens it. Calls go over a named pipe only the signed-in Windows user can open; nothing listens on the network.
 
 ## Technical Architecture
 
