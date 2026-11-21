@@ -109,6 +109,13 @@ const ICONS = {
   soundcloud: '<path d="M6 17h12.5a3.5 3.5 0 0 0 .4-7 6 6 0 0 0-11.5-1.6A4.5 4.5 0 0 0 6 17z"/>',
   trash: '<path d="M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7z"/>',
   info: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/>',
+  sparkle: '<path d="M11 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5zM18.5 14c.3 2.2 1.3 3.2 3.5 3.5-2.2.3-3.2 1.3-3.5 3.5-.3-2.2-1.3-3.2-3.5-3.5 2.2-.3 3.2-1.3 3.5-3.5z"/>',
+  send: '<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  compose: '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M18.4 3.6a2 2 0 0 1 2.8 2.8L12 15.6 8.5 16.5l.9-3.5z"/>',
+  check: '<path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/>',
+  chevronDown: '<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>',
+  shield: '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/>',
 };
 
 function icon(name, size = 20) {
@@ -1406,7 +1413,13 @@ function onRowActivate(row, act) {
 function openMenu(rect, entries) {
   const menu = $('#menu');
   menu.innerHTML = entries
-    .map((e, i) => (e === '-' ? '<hr>' : e.label && !e.run ? `<div class="label">${esc(e.label)}</div>` : `<button role="menuitem" data-i="${i}" ${e.disabled ? 'disabled' : ''}>${esc(e.text)}</button>`))
+    .map((e, i) =>
+      e === '-'
+        ? '<hr>'
+        : e.label && !e.run
+          ? `<div class="label">${esc(e.label)}</div>`
+          : `<button role="${e.checked === undefined ? 'menuitem' : 'menuitemradio'}" ${e.checked === undefined ? '' : `aria-checked="${e.checked}"`} data-i="${i}" ${e.disabled ? 'disabled' : ''}>${e.checked === undefined ? '' : `<span class="check">${e.checked ? icon('check', 14) : ''}</span>`}${e.desc ? `<span class="menu-text"><span>${esc(e.text)}</span><span class="menu-desc">${esc(e.desc)}</span></span>` : esc(e.text)}</button>`,
+    )
     .join('');
   menu.hidden = false;
   const { innerWidth: W, innerHeight: H } = window;
@@ -2147,6 +2160,7 @@ async function openSettings() {
   }
   $('#exePathInput').placeholder = state.status?.spotify?.exe || 'Auto-detect (%APPDATA%\\Spotify\\Spotify.exe)';
   $('#normalizeToggle').checked = P.normalize;
+  const saveAccess = await setupSettingsAccess();
   const dlg = $('#settingsDialog');
   dlg.returnValue = '';
   dlg.showModal();
@@ -2157,6 +2171,7 @@ async function openSettings() {
     for (const el of form.querySelectorAll('input[type=checkbox][name]')) body[el.name] = el.checked;
     try {
       await api('/api/settings', { method: 'PUT', body });
+      await saveAccess?.();
       toast('Settings saved');
       refreshStatus();
       // Re-run a failed Spotify search (e.g. after fixing the exe path).

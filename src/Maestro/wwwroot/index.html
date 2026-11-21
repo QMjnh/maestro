@@ -51,6 +51,25 @@
         <div class="np-next" id="npNext"></div>
       </aside>
 
+      <aside class="agent" id="agentPanel" hidden aria-label="Agent">
+        <div class="agent-head">
+          <div class="agent-title"><span data-icon="sparkle" data-size="18"></span>Agent</div>
+          <span class="agent-account" id="agentAccount"></span>
+          <button class="icon-btn small" id="agentNew" title="New chat"><span data-icon="compose" data-size="16"></span></button>
+          <button class="icon-btn small" id="agentClose" title="Close (Ctrl+J)"><span data-icon="close" data-size="16"></span></button>
+        </div>
+        <div class="agent-log" id="agentLog" aria-live="polite"></div>
+        <form class="agent-compose" id="agentForm">
+          <textarea id="agentInput" rows="1" placeholder="Ask for music…" spellcheck="false" aria-label="Message"></textarea>
+          <div class="agent-bar">
+            <button type="button" class="agent-pick" id="agentPick"></button>
+            <button type="button" class="agent-pick" id="agentEffort" hidden></button>
+            <button type="button" class="agent-pick" id="agentAccess"></button>
+            <button type="submit" class="agent-send" id="agentSend" disabled></button>
+          </div>
+        </form>
+      </aside>
+
       <footer class="player">
         <div class="pl-track">
           <img class="pl-art" id="plArt" alt="" />
@@ -79,6 +98,7 @@
         </div>
         <div class="pl-right">
           <span class="source-chip" id="sourceChip"></span>
+          <button class="icon-btn toggle" id="btnAgent" title="Agent (Ctrl+J)" aria-label="Agent"><span data-icon="sparkle"></span></button>
           <button class="icon-btn" id="btnMute" title="Mute"><span data-icon="volume"></span></button>
           <div class="bar volume" id="volume" title="Volume"><div class="bar-fill" id="volumeFill"></div></div>
         </div>
@@ -138,6 +158,19 @@
           </p>
         </section>
 
+        <section>
+          <h3>Agent</h3>
+          <p class="hint">Choose what the Agent panel's agent may do besides Maestro's own music tools.</p>
+          <div class="seg" id="settingsAccessSeg" role="radiogroup" aria-label="Agent access">
+            <button type="button" role="radio" data-level="minimal">Minimal</button>
+            <button type="button" role="radio" data-level="recommended">Recommended</button>
+            <button type="button" role="radio" data-level="full">Full access</button>
+            <button type="button" role="radio" data-level="custom">Custom</button>
+          </div>
+          <p class="hint access-summary" id="settingsAccessSummary"></p>
+          <div class="access-caps" id="settingsAccessCaps" hidden></div>
+        </section>
+
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
           <button value="save" class="btn primary">Save</button>
@@ -167,11 +200,24 @@
       </form>
     </dialog>
 
+    <dialog class="modal" id="agentAccessDialog">
+      <form method="dialog" id="agentAccessForm">
+        <h2>Custom agent access</h2>
+        <p class="hint">Maestro's music tools are always on. Choose what else the agent may use.</p>
+        <div class="access-caps" id="agentAccessCaps"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button value="save" class="btn primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
     <iframe id="scPlayer" allow="autoplay" title="SoundCloud"></iframe>
     <div class="menu" id="menu" hidden></div>
     <div class="toasts" id="toasts"></div>
 
     <script src="app.js"></script>
     <script src="agent.js"></script>
+    <script src="chat.js"></script>
   </body>
 </html>

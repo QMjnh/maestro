@@ -22,6 +22,7 @@ Maestro is a desktop music aggregator that unifies Spotify, YouTube, and SoundCl
 - **Smart Recommendations & Autoplay**: Combines Spotify song radio, YouTube Mixes, and SoundCloud related tracks to continue playing personalized music when the user's queue ends.
 - **Link Resolver**: Paste any Spotify song/album/playlist link, YouTube video/playlist URL, or SoundCloud track/set URL to play instantly or import up to 100 tracks.
 - **Zero Configuration**: No developer accounts, Spotify Premium subscription, or API keys needed.
+- **Built-in Agent Panel**: A chat beside the player (Ctrl+J) where Claude or Codex controls Maestro from plain requests ("play something upbeat", "save my queue as a playlist"). It runs on the user's own Claude or ChatGPT sign-in through Agent Client Protocol (ACP) adapters, with model, effort, and access level pickers (Minimal, Recommended, Full access, or Custom). Requires Node.js.
 - **AI Agent Control (MCP)**: `Maestro.exe mcp` is a built-in Model Context Protocol server (stdio) exposing everything the UI can do as tools: search, play, pause, skip, seek, volume, shuffle, repeat, autoplay, queue editing, favorites, playlists, home recommendations, and settings. `Maestro.exe agent <tool> key=value ...` runs the same tools from a shell.
 
 ## Common Questions

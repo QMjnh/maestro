@@ -24,8 +24,9 @@
 - **Ad-free.** No ads in Maestro. Patch Spotify with [SpotX](https://github.com/SpotX-Official/SpotX) and Spotify
   plays ad-free too, even on a free account.
 - **Even volume.** One slider for everything, with YouTube and SoundCloud leveled to match Spotify.
-- **Works with AI agents.** A built-in MCP server lets Claude, Codex, and other agents search, play, queue, like, and
-  build playlists for you ([details](#use-it-from-an-ai-agent)).
+- **Ask an agent.** Open the Agent panel and tell Claude or Codex what you want to hear. It runs on your own Claude or
+  ChatGPT sign-in, with no API keys. Other agents can control Maestro too, through its built-in MCP server
+  ([details](#use-it-from-an-ai-agent)).
 
 How each service plays:
 
@@ -87,7 +88,8 @@ shows its login screen, Maestro brings that window up so you can sign in.
 | **Favorites** | Tap the heart beside the current song in the player bar or Now Playing panel, or on a track row. Open **Favorites** in the sidebar to play, shuffle, or queue your saved songs from all three sources. Saved locally in `%APPDATA%\Maestro\favorites.json`. |
 | **Playlists** | Stored in `%APPDATA%\Maestro\playlists.json`. Use the **+** beside the current song to add it to a playlist or Favorites, use a track's ⋯ menu, or drag a track onto a playlist in the sidebar. |
 | **Volume** | A single slider controls YouTube, Spotify, and SoundCloud. *Even out volume between sources* (Settings, on by default) measures each YouTube and SoundCloud track and turns it up or down to match Spotify's level. It settles in the first few seconds of a track. |
-| **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search |
+| **Agent** | The ✦ button in the player bar (or `Ctrl+J`) opens a chat beside the player. Ask for music in your own words: *"play something upbeat"*, *"queue 5 songs like this one"*, *"save my queue as a playlist"*. Pick the agent (Claude or Codex), its model, effort, and access level under the message box. [Details](#the-agent-panel). |
+| **Keys** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search · `Ctrl+J` Agent |
 
 Settings has switches for *Keep Spotify's window hidden* and *Close Spotify when Maestro closes* (both on by default).
 Both only apply to a Spotify that Maestro started and that you haven't opened yourself. A Spotify you start is never
@@ -97,8 +99,31 @@ hidden or closed by Maestro.
 
 Anything you can do in Maestro's window, an AI agent can do too: search, play, pause, skip, seek, change the volume,
 shuffle, repeat, and autoplay, edit the queue, like songs, create and edit playlists, open home recommendations,
-and change settings. The window shows each change as it happens. Maestro has an
-[MCP](https://modelcontextprotocol.io) server built in, so there's nothing extra to install.
+and change settings. The window shows each change as it happens.
+
+### The Agent panel
+
+The ✦ button in the player bar (or `Ctrl+J`) opens a chat beside the player. Each step the agent takes shows as a
+line in the chat (*Searching "daft punk"*, *Adding 5 songs to the queue*), and the player updates as it goes.
+
+- **Your own sign-in, no API keys.** The panel runs **Claude** (with your Claude Pro or Max plan) or **Codex** (with
+  your ChatGPT plan), the same way editors like Zed do: through the
+  [Agent Client Protocol](https://agentclientprotocol.com) adapters from its official registry. If you've used
+  Claude Code or Codex on this PC, you're already signed in. If not, the panel shows how.
+- **Pick the model and effort** under the message box. The lists come from the agent itself, so new models show up
+  without a Maestro update. Maestro remembers your picks for each agent.
+- **Chats continue** after you close Maestro. *New chat* (the pencil) starts over.
+- **Choose what the agent can use.** Pick an access level under the message box (or in Settings): **Minimal**
+  (Maestro's music tools only), **Recommended** (adds web search, sub-agents, and image generation, while blocking
+  files, commands, and desktop control), **Full access** (the agent's full tool set without prompts), or **Custom**
+  (pick individual capabilities). Changing it restarts the agent and continues the same conversation.
+- **Needs [Node.js](https://nodejs.org).** The adapters for Claude and Codex are run with `npx`. The first start
+  downloads the adapter, which takes a minute; after that it starts in a few seconds.
+
+### Other agents (MCP)
+
+Maestro also has an [MCP](https://modelcontextprotocol.io) server built in, so agents you already use can control it,
+with nothing extra to install.
 
 **Claude Code** (or **Codex**: `codex mcp add maestro -- maestro mcp`):
 
@@ -227,6 +252,9 @@ src/Maestro/
   MainForm.cs           the window: WebView2 showing the UI; /api/* requests are answered in-process (no server/port)
   Api.cs                the API routes the UI calls
   Agent.cs              AI agent access: the pipe the app listens on, `Maestro.exe mcp` (MCP server), `Maestro.exe agent`
+  AgentChat.cs          the Agent panel's backend: runs Claude or Codex with the chosen access level, streams replies
+  AgentAccess.cs        the four access levels (minimal, recommended, full, custom) mapped to Claude and Codex settings
+  Acp.cs                a client for the Agent Client Protocol, which the panel's agents speak
   AgentTools.cs         the tools agents get, with their descriptions and parameters
   SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
   inject.js             the code Maestro runs inside Spotify's page
@@ -239,7 +267,8 @@ src/Maestro/
   SoundCloud.cs         SoundCloud link parsing, search, related tracks
   Store.cs              settings + playlists in %APPDATA%\Maestro
   NativeMethods.cs      Win32 calls (window hiding, single instance, dark title bar)
-  wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe; agent.js runs agents' tool calls
+  wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe; agent.js runs agents' tool calls,
+                        chat.js is the Agent panel
 install.ps1             the one-line installer / updater / uninstaller
 .github/workflows/      release.yml: builds Maestro-win-x64.exe for each v* tag
 tools/make-icon.ps1     regenerates maestro.ico

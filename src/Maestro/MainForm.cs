@@ -19,12 +19,14 @@ sealed class MainForm : Form
     readonly Panel youTubeHost = new() { Bounds = new Rectangle(0, 0, 320, 180) };
     readonly SpotifyApp spotify = new();
     readonly Api api;
+    readonly AgentChat chat;
     CoreWebView2Environment? env;
     YouTubePage? youTubePage;
 
     public MainForm()
     {
-        api = new Api(spotify);
+        chat = new AgentChat(PostChat);
+        api = new Api(spotify, chat);
         Text = "Maestro";
         using (var icoStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("maestro.ico"))
         {
@@ -38,7 +40,7 @@ sealed class MainForm : Form
         Controls.Add(youTubeHost);
         youTubeHost.SendToBack();
         Load += async (_, _) => await InitWebView();
-        FormClosing += (_, _) => { SavePlacement(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
+        FormClosing += (_, _) => { SavePlacement(); chat.Dispose(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
         _ = spotify.Prewarm(Store.GetSettings().SpotifyExePath);
     }
 
@@ -100,6 +102,17 @@ sealed class MainForm : Form
         agent.Start();
         await core.AddScriptToExecuteOnDocumentCreatedAsync(Program.Resource("normalizer.js"));
         core.Navigate(Origin + "/index.html");
+    }
+
+    /// <summary>An event for the Agent panel, from any thread.</summary>
+    void PostChat(JsonNode e)
+    {
+        var json = new JsonObject { ["chat"] = e }.ToJsonString();
+        try
+        {
+            if (IsHandleCreated && !IsDisposed) BeginInvoke(() => web.CoreWebView2?.PostWebMessageAsJson(json));
+        }
+        catch (InvalidOperationException) { } // closing
     }
 
     static void OpenExternal(string uri)
