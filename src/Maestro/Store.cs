@@ -45,6 +45,10 @@ static class Store
         /// <summary>Quit Spotify on exit — only if Maestro was the one that started it.</summary>
         public bool CloseSpotifyOnExit { get; set; } = true;
         public WindowPlacement? Window { get; set; }
+        /// <summary>What the Agent panel's agent may do: minimal, recommended, full, or custom (AgentAccess.cs).</summary>
+        public string AgentAccess { get; set; } = "recommended";
+        /// <summary>The capabilities picked for the custom level.</summary>
+        public List<string> AgentCustom { get; set; } = ["web", "subagents", "images"];
     }
 
     public sealed record WindowPlacement(int X, int Y, int Width, int Height, bool Maximized);

@@ -7,7 +7,7 @@ namespace Maestro;
 /// The UI's backend. The page calls fetch('/api/...') as before; MainForm intercepts those
 /// requests inside WebView2 and hands them here, so there is no local server or port.
 /// </summary>
-sealed class Api(SpotifyApp spotify)
+sealed class Api(SpotifyApp spotify, AgentChat chat)
 {
     sealed class BadRequest(string message) : Exception(message);
 
@@ -25,7 +25,7 @@ sealed class Api(SpotifyApp spotify)
             var (status, code) = e switch
             {
                 AppException a => (409, a.Code),
-                BadRequest => (400, null),
+                BadRequest or ArgumentException => (400, null),
                 KeyNotFoundException => (404, null),
                 _ => (502, null), // other websites failing, network errors, Spotify-side errors
             };
@@ -205,6 +205,47 @@ sealed class Api(SpotifyApp spotify)
                 spotify.ApplyWindowSetting();
                 return updated;
             }
+
+            // The Agent panel (AgentChat.cs). Replies stream back as {chat: event} web messages.
+            case ("GET", "/api/chat"):
+                return await chat.List();
+
+            case ("POST", "/api/chat/connect"):
+            {
+                var b = Body();
+                return await chat.Connect(b.Str("agent") ?? throw new BadRequest("agent is required"), b.Str("sessionId"));
+            }
+
+            case ("POST", "/api/chat/new"):
+                return await chat.NewChat();
+
+            case ("POST", "/api/chat/prompt"):
+            {
+                var text = Body().Str("text")?.Trim();
+                if (string.IsNullOrEmpty(text)) throw new BadRequest("text is required");
+                chat.Prompt(text);
+                return new { ok = true };
+            }
+
+            case ("POST", "/api/chat/cancel"):
+                await chat.Cancel();
+                return new { ok = true };
+
+            case ("POST", "/api/chat/option"):
+            {
+                var b = Body();
+                return await chat.SetOption(b.Str("configId") ?? throw new BadRequest("configId is required"), b?["value"]);
+            }
+
+            case ("POST", "/api/chat/access"):
+            {
+                var b = Body();
+                var custom = (b?["custom"] as JsonArray)?.Select(n => n?.GetValue<string>() ?? "").ToList();
+                return await chat.SetAccess(b.Str("level") ?? throw new BadRequest("level is required"), custom);
+            }
+
+            case ("POST", "/api/chat/signin"):
+                return await chat.SignIn(Body().Str("methodId") ?? throw new BadRequest("methodId is required"));
 
             case ("GET", "/api/playlists"):
                 return Store.ListPlaylists();
