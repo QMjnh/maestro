@@ -97,6 +97,22 @@ static partial class NativeMethods
         return all.Where(p => !all.ContainsKey(p.Value)).Select(p => p.Key).ToHashSet();
     }
 
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GetStdHandle(int which);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AttachConsole(int pid);
+
+    /// <summary>
+    /// For command-line use: write to the terminal Maestro was started from. A GUI app gets no console, so without this
+    /// its output only shows up when it's redirected (as agents and scripts do).
+    /// </summary>
+    public static void AttachToParentConsole()
+    {
+        if (GetStdHandle(-11 /* STD_OUTPUT_HANDLE */) == IntPtr.Zero) AttachConsole(-1 /* ATTACH_PARENT_PROCESS */);
+    }
+
     /// <summary>Dark title bar to match the UI (Windows 10 20H1+ / 11).</summary>
     public static void UseDarkTitleBar(IntPtr hwnd)
     {

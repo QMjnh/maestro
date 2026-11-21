@@ -89,11 +89,15 @@ sealed class MainForm : Form
         };
         // Videos whose owner blocks embedding play on youtube.com in a hidden second browser.
         youTubePage = new YouTubePage(env, youTubeHost, core);
+        // AI agents' tool calls run in the page too (Agent.cs, agent.js).
+        var agent = new Agent.Host(this, core);
         core.WebMessageReceived += (_, e) =>
         {
-            if (e.Source.StartsWith(Origin + "/") && JsonNode.Parse(e.WebMessageAsJson) is JsonObject o && o["ytPage"] is JsonObject msg)
-                _ = youTubePage.Handle(msg);
+            if (!e.Source.StartsWith(Origin + "/") || JsonNode.Parse(e.WebMessageAsJson) is not JsonObject o) return;
+            if (o["ytPage"] is JsonObject msg) _ = youTubePage.Handle(msg);
+            else agent.OnMessage(o);
         };
+        agent.Start();
         await core.AddScriptToExecuteOnDocumentCreatedAsync(Program.Resource("normalizer.js"));
         core.Navigate(Origin + "/index.html");
     }

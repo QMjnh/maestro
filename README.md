@@ -24,6 +24,8 @@
 - **Ad-free.** No ads in Maestro. Patch Spotify with [SpotX](https://github.com/SpotX-Official/SpotX) and Spotify
   plays ad-free too, even on a free account.
 - **Even volume.** One slider for everything, with YouTube and SoundCloud leveled to match Spotify.
+- **Works with AI agents.** A built-in MCP server lets Claude, Codex, and other agents search, play, queue, like, and
+  build playlists for you ([details](#use-it-from-an-ai-agent)).
 
 How each service plays:
 
@@ -90,6 +92,53 @@ shows its login screen, Maestro brings that window up so you can sign in.
 Settings has switches for *Keep Spotify's window hidden* and *Close Spotify when Maestro closes* (both on by default).
 Both only apply to a Spotify that Maestro started and that you haven't opened yourself. A Spotify you start is never
 hidden or closed by Maestro.
+
+## Use it from an AI agent
+
+Anything you can do in Maestro's window, an AI agent can do too: search, play, pause, skip, seek, change the volume,
+shuffle, repeat, and autoplay, edit the queue, like songs, create and edit playlists, open home recommendations,
+and change settings. The window shows each change as it happens. Maestro has an
+[MCP](https://modelcontextprotocol.io) server built in, so there's nothing extra to install.
+
+**Claude Code** (or **Codex**: `codex mcp add maestro -- maestro mcp`):
+
+```powershell
+claude mcp add maestro -- maestro mcp
+```
+
+**Claude Desktop, Cursor, and other MCP apps:** add this to the app's MCP config. Use the full path to `Maestro.exe`
+(this one is where the installer puts it), because some apps don't search PATH:
+
+```json
+{
+  "mcpServers": {
+    "maestro": { "command": "C:\\Users\\YOU\\AppData\\Local\\Programs\\Maestro\\Maestro.exe", "args": ["mcp"] }
+  }
+}
+```
+
+Then ask for things like *"play some Daft Punk"*, *"queue the rest of this album after this song"*, *"like this
+song"*, or *"make a playlist from my queue called Road trip"*. If Maestro isn't open, the agent's first request opens it.
+
+**From a shell or script**, `maestro agent` runs the same tools and prints JSON. Run `maestro agent` with no arguments
+to list the tools and their parameters.
+
+```powershell
+maestro agent search query="daft punk" source=spotify limit=5
+maestro agent set_player_options volume=40 shuffle=true
+maestro agent add_to_queue urls='["https://youtu.be/dQw4w9WgXcQ"]' playNext=true
+```
+
+| Area | Tools |
+|---|---|
+| Find music | `search`, `resolve_link`, `get_home` |
+| Playback | `get_state`, `play`, `player_control` (play / pause / next / previous), `seek`, `set_player_options` (volume, mute, shuffle, repeat, autoplay, volume leveling) |
+| Queue | `get_queue`, `add_to_queue`, `play_queue_position`, `remove_from_queue`, `move_in_queue`, `clear_queue` |
+| Library | `list_playlists`, `get_playlist`, `set_favorite`, `create_playlist`, `add_to_playlist`, `remove_from_playlist`, `move_in_playlist`, `rename_playlist`, `delete_playlist` |
+| App | `show_view`, `get_settings`, `update_settings`, `manage_spotify` |
+
+Requests reach Maestro over a named pipe that only your Windows account can open. Nothing listens on the network.
+Programs running as you can use it, just as they could click around Maestro's window.
 
 ## How the Spotify side works
 
@@ -177,6 +226,8 @@ Maestro is licensed under the [Business Source License 1.1](LICENSE) (BUSL-1.1),
 src/Maestro/
   MainForm.cs           the window: WebView2 showing the UI; /api/* requests are answered in-process (no server/port)
   Api.cs                the API routes the UI calls
+  Agent.cs              AI agent access: the pipe the app listens on, `Maestro.exe mcp` (MCP server), `Maestro.exe agent`
+  AgentTools.cs         the tools agents get, with their descriptions and parameters
   SpotifyApp.cs         drives the Spotify app: start hidden, connect, player, search, restart, autostart, exit
   inject.js             the code Maestro runs inside Spotify's page
   normalizer.js         the volume normalizer, run inside the YouTube and SoundCloud frames
@@ -188,7 +239,7 @@ src/Maestro/
   SoundCloud.cs         SoundCloud link parsing, search, related tracks
   Store.cs              settings + playlists in %APPDATA%\Maestro
   NativeMethods.cs      Win32 calls (window hiding, single instance, dark title bar)
-  wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe
+  wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe; agent.js runs agents' tool calls
 install.ps1             the one-line installer / updater / uninstaller
 .github/workflows/      release.yml: builds Maestro-win-x64.exe for each v* tag
 tools/make-icon.ps1     regenerates maestro.ico
