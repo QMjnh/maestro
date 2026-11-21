@@ -9,12 +9,14 @@ const chat = {
   agent: chatSaved.agent || 'claude-acp',
   sessionId: chatSaved.sessionId || null,
   log: Array.isArray(chatSaved.log) ? chatSaved.log : [], // { k: 'user' | 'agent' | 'tool' | 'error' | 'note', ... }
+  needsHandoff: !!chatSaved.needsHandoff, // carry chat.log into the next prompt after switching agents
   prefs: chatSaved.prefs || {}, // agent id -> { config option id: value } picked by the user
   agents: [],
   access: null, // { level, custom, recommended, capabilities } from AgentAccess.cs
-  status: 'idle', // idle | connecting | ready | signin | error
+  status: 'idle', // idle | connecting | ready | install | installing | signin | error
   message: '', // what the status means right now
   signIn: null,
+  needsInstall: null,
   account: '',
   configOptions: [],
   busy: false,
@@ -32,7 +34,14 @@ const CHAT_SUGGESTIONS = ['Play something upbeat', "What's playing?", 'Queue 5 s
 function persistChat() {
   localStorage.setItem(
     'maestro.agent',
-    JSON.stringify({ open: chat.open, agent: chat.agent, sessionId: chat.sessionId, log: chat.log.slice(-CHAT_LOG_MAX), prefs: chat.prefs }),
+    JSON.stringify({
+      open: chat.open,
+      agent: chat.agent,
+      sessionId: chat.sessionId,
+      log: chat.log.slice(-CHAT_LOG_MAX),
+      needsHandoff: chat.needsHandoff,
+      prefs: chat.prefs,
+    }),
   );
 }
 
@@ -41,7 +50,10 @@ function persistChat() {
 const chatOption = (category) => chat.configOptions.find((o) => o.category === category || o.id === category);
 const optionValues = (o) => (o?.options || []).flatMap((v) => (Array.isArray(v.options) ? v.options : [v]));
 const optionName = (o) => optionValues(o).find((v) => v.value === o?.currentValue)?.name || o?.currentValue || '';
-const agentName = (id = chat.agent) => chat.agents.find((a) => a.id === id)?.name || { 'claude-acp': 'Claude', 'codex-acp': 'Codex' }[id] || id;
+const agentName = (id = chat.agent) =>
+  chat.agents.find((a) => a.id === id)?.name ||
+  { 'claude-acp': 'Claude', 'codex-acp': 'Codex', cursor: 'Cursor', 'antigravity-acp': 'Antigravity', opencode: 'OpenCode', gemini: 'Gemini CLI', 'github-copilot-cli': 'GitHub Copilot' }[id] ||
+  id;
 
 function applyChatSnapshot(r) {
   chat.account = r.account || chat.account;
@@ -221,30 +233,28 @@ function chatConnect({ fresh = false } = {}) {
   chat.status = 'connecting';
   chat.message = `Starting ${agentName()}…`;
   chat.signIn = null;
+  chat.needsInstall = null;
+  chat.needsNode = false;
   renderChat();
   chat.connecting = (async () => {
     try {
       await loadChatMeta();
-      const a = chat.agents.find((x) => x.id === chat.agent);
-      if (a && !a.available) throw Object.assign(new Error(`${a.name} needs Node.js to run. Install it, then try again.`), { node: true });
-      const slow = setTimeout(() => {
-        chat.message = `Starting ${agentName()}… The first time, this downloads it and can take a minute.`;
-        renderChat();
-      }, 4000);
-      let r;
-      try {
-        r = await api('/api/chat/connect', { method: 'POST', body: { agent: chat.agent, sessionId: fresh ? null : chat.sessionId } });
-      } finally {
-        clearTimeout(slow);
+      const r = await api('/api/chat/connect', { method: 'POST', body: { agent: chat.agent, sessionId: fresh ? null : chat.sessionId } });
+      if (r.needsInstall) {
+        chat.status = 'install';
+        chat.needsInstall = r.needsInstall;
+        chat.message = '';
+        return false;
       }
       if (r.signIn) {
         chat.status = 'signin';
         chat.signIn = r.signIn;
+        chat.message = '';
         return false;
       }
       applyChatSnapshot(r);
       if (chat.sessionId && r.sessionId !== chat.sessionId && chat.log.some((e) => e.k === 'user')) {
-        chat.log.push({ k: 'note', text: "New conversation. The agent doesn't remember the messages above." });
+        chat.needsHandoff = true;
       }
       chat.sessionId = r.sessionId;
       chat.status = 'ready';
@@ -265,10 +275,58 @@ function chatConnect({ fresh = false } = {}) {
   return chat.connecting;
 }
 
+async function chatInstall() {
+  if (chat.status === 'installing') return;
+  const target = chat.agent;
+  chat.status = 'installing';
+  chat.message = `Installing ${agentName(target)}…`;
+  chat.needsInstall = null;
+  renderChat();
+  try {
+    await api('/api/chat/install', { method: 'POST', body: { agent: target } });
+    const entry = chat.agents.find((a) => a.id === target);
+    if (entry) entry.installed = true;
+    if (chat.agent === target) {
+      chat.status = 'idle';
+      chatConnect();
+    }
+  } catch (err) {
+    if (chat.agent !== target) return;
+    chat.status = 'error';
+    chat.message = err.message;
+    renderChat();
+  }
+}
+
+/** Build a compact transcript of chat.log to hand off context when switching agents. */
+function buildHandoff() {
+  const MAX_CHARS = 12000;
+  const lines = [];
+  for (const e of chat.log) {
+    if (e.k === 'user') lines.push(`User: ${e.text}`);
+    else if (e.k === 'agent') lines.push(`Assistant: ${e.text}`);
+    else if (e.k === 'tool') lines.push(`[Action: ${toolLabel(e)}${e.status === 'failed' ? ' (failed)' : ''}]`);
+  }
+  if (!lines.length) return '';
+  const kept = [];
+  let len = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (kept.length && len + line.length + 1 > MAX_CHARS) {
+      kept.push('(earlier messages omitted)');
+      break;
+    }
+    kept.push(line);
+    len += line.length + 1;
+  }
+  return kept.reverse().join('\n');
+}
+
 async function chatSend(text) {
   text = text.trim();
-  if (!text || chat.busy) return false;
+  if (!text || chat.busy || chat.status === 'installing') return false;
   if (chat.status !== 'ready' && !(await chatConnect())) return false;
+  const handoff = chat.needsHandoff ? buildHandoff() : null;
   chat.log.push({ k: 'user', text });
   chat.busy = true;
   chat.thinking = false;
@@ -276,7 +334,11 @@ async function chatSend(text) {
   persistChat();
   renderChat();
   try {
-    await api('/api/chat/prompt', { method: 'POST', body: { text } });
+    await api('/api/chat/prompt', { method: 'POST', body: handoff ? { text, handoff } : { text } });
+    if (handoff) {
+      chat.needsHandoff = false;
+      persistChat();
+    }
   } catch (err) {
     chat.busy = false;
     chat.log.push({ k: 'error', text: err.message });
@@ -292,6 +354,7 @@ function chatStop() {
 async function chatNew() {
   if (chat.busy) chatStop();
   chat.log = [];
+  chat.needsHandoff = false;
   chat.stream = null;
   if (chat.status === 'ready') {
     try {
@@ -315,7 +378,25 @@ async function chatNew() {
 function chatSwitchAgent(id) {
   if (id === chat.agent) return;
   if (chat.busy) chatStop();
-  Object.assign(chat, { agent: id, sessionId: null, log: [], stream: null, account: '', configOptions: [], status: 'idle' });
+  const hasContext = chat.log.some((e) => e.k === 'user' || e.k === 'agent');
+  if (hasContext) {
+    chat.needsHandoff = true;
+    // Replace a trailing switch note if the user switches agents several times before messaging.
+    if (chat.log.at(-1)?.handoff) chat.log.pop();
+    chat.log.push({ k: 'note', handoff: true, text: `Switched to ${agentName(id)} — conversation context will carry over.` });
+  }
+  Object.assign(chat, {
+    agent: id,
+    sessionId: null,
+    stream: null,
+    account: '',
+    configOptions: [],
+    signIn: null,
+    needsInstall: null,
+    busy: false,
+    thinking: false,
+    status: 'idle',
+  });
   persistChat();
   chatConnect();
 }
@@ -327,9 +408,12 @@ window.chrome?.webview?.addEventListener('message', (e) => {
   if (ev.type === 'status') {
     if (ev.state === 'stopped') {
       Object.assign(chat, { status: 'error', message: ev.message || `${agentName()} stopped.`, busy: false, stream: null });
-    } else if (ev.state === 'starting' && chat.status !== 'connecting') {
+    } else if (ev.state === 'installing') {
+      chat.status = 'installing';
+      if (ev.message) chat.message = ev.message;
+    } else if (ev.state === 'starting') {
       chat.status = 'connecting';
-      chat.message = ev.message;
+      if (ev.message) chat.message = ev.message;
     }
   } else if (ev.type === 'account') {
     chat.account = ev.account || '';
@@ -476,25 +560,33 @@ function renderChatLog() {
   const log = $('#agentLog');
   if (!log) return;
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-  let html;
-  if (chat.status === 'signin' && chat.signIn) {
-    html = `<div class="agent-card"><div>${esc(chat.signIn.message)}</div>
-      <div class="agent-card-actions">
-        ${(chat.signIn.methods || []).map((m) => `<button class="btn ghost" data-signin="${esc(m.id)}" title="${esc(m.description || '')}">${esc(m.name)}</button>`).join('')}
-        <button class="btn primary" data-chat-retry>I've signed in</button>
-      </div></div>`;
-  } else if (!chat.log.length) {
+  let html = '';
+  if (chat.log.length) {
+    html = chat.log.map(chatEntry).join('');
+  } else if (chat.status !== 'signin' && chat.status !== 'install') {
     html = `<div class="agent-empty">
       <div class="agent-empty-icon">${icon('sparkle', 28)}</div>
       <h2>What do you want to hear?</h2>
       <p>Ask ${esc(agentName())} to play, queue, like, or organize your music. It can do anything you can do in Maestro.</p>
       <div class="agent-chips">${CHAT_SUGGESTIONS.map((s) => `<button class="agent-chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join('')}</div>
     </div>`;
-  } else {
-    html = chat.log.map(chatEntry).join('');
   }
-  if (chat.status === 'connecting') html += `<div class="msg note busy"><span class="spin"></span>${esc(chat.message)}</div>`;
-  else if (chat.status === 'error') {
+  if (chat.status === 'install' && chat.needsInstall) {
+    const ni = chat.needsInstall;
+    html += `<div class="agent-card"><div><strong>${esc(ni.message)}</strong></div>
+      <div class="agent-card-detail">${esc(ni.detail || '')}</div>
+      <div class="agent-card-actions">
+        ${ni.needsNode ? '<button class="btn primary" data-open-node>Get Node.js</button>' : `<button class="btn primary" data-chat-install>${esc(ni.buttonLabel || `Install ${agentName()}`)}</button>`}
+      </div></div>`;
+  } else if (chat.status === 'signin' && chat.signIn) {
+    html += `<div class="agent-card"><div>${esc(chat.signIn.message)}</div>
+      <div class="agent-card-actions">
+        ${(chat.signIn.methods || []).map((m) => `<button class="btn ghost" data-signin="${esc(m.id)}" title="${esc(m.description || '')}">${esc(m.name)}</button>`).join('')}
+        <button class="btn primary" data-chat-retry>I've signed in</button>
+      </div></div>`;
+  } else if (chat.status === 'connecting' || chat.status === 'installing') {
+    html += `<div class="msg note busy"><span class="spin"></span>${esc(chat.message)}</div>`;
+  } else if (chat.status === 'error') {
     html += `<div class="agent-card error"><div>${esc(chat.message)}</div><div class="agent-card-actions">
       ${chat.needsNode ? '<button class="btn ghost" data-open-node>Get Node.js</button>' : ''}
       <button class="btn ghost" data-chat-retry>Try again</button></div></div>`;
@@ -551,21 +643,80 @@ function renderChat() {
   renderChatBar();
 }
 
-function openAgentMenu() {
+async function openAgentMenu() {
+  if (!chat.agents.length) {
+    try { await loadChatMeta(); } catch {}
+  }
   const model = chatOption('model');
+  const all = chat.agents.length ? chat.agents : [{ id: chat.agent, name: agentName(), available: true, featured: true }];
+  const featured = all.filter((a) => a.featured !== false);
+  const extras = all.filter((a) => a.featured === false);
+  const currentExtra = extras.find((a) => a.id === chat.agent);
+  const shown = currentExtra ? [...featured, currentExtra] : featured;
   const entries = [
     { label: 'Agent' },
-    ...(chat.agents.length ? chat.agents : [{ id: chat.agent, name: agentName(), available: true }]).map((a) => ({
-      checked: a.id === chat.agent, text: a.name + (a.available ? '' : ` (${a.problem})`),
-      disabled: !a.available,
+    ...shown.map((a) => ({
+      checked: a.id === chat.agent,
+      text: a.name,
+      desc: !a.available ? a.problem : a.installed === false ? 'Not installed' : undefined,
       run: () => chatSwitchAgent(a.id),
     })),
   ];
+  if (extras.length) {
+    entries.push({
+      text: 'More agents…',
+      desc: `${extras.length} more from the ACP registry`,
+      run: openMoreAgentsDialog,
+    });
+  }
   if (model) {
     entries.push('-', { label: model.name || 'Model' });
     for (const v of optionValues(model)) entries.push({ checked: v.value === model.currentValue, text: v.name || v.value, run: () => setChatOption(model.id, v.value) });
   }
   openMenu($('#agentPick').getBoundingClientRect(), entries);
+}
+
+async function openMoreAgentsDialog() {
+  try {
+    await loadChatMeta();
+  } catch (err) {
+    return toast(err.message, { error: true });
+  }
+  const dlg = $('#agentMoreDialog');
+  const search = $('#agentMoreSearch');
+  const list = $('#agentMoreList');
+  search.value = '';
+  const paint = () => {
+    const q = search.value.trim().toLowerCase();
+    const matches = chat.agents.filter(
+      (a) => !q || a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q) || (a.description || '').toLowerCase().includes(q),
+    );
+    if (!matches.length) {
+      list.innerHTML = '<div class="agent-more-empty">No matching agents.</div>';
+      return;
+    }
+    list.innerHTML = matches
+      .map(
+        (a) => `<button type="button" class="agent-more-item${a.id === chat.agent ? ' active' : ''}" data-agent-id="${esc(a.id)}">
+          <span class="agent-more-check">${a.id === chat.agent ? icon('check', 14) : ''}</span>
+          <span class="agent-more-body">
+            <span class="agent-more-name">${esc(a.name)}${!a.available ? ` <span class="access-tag">${esc(a.problem)}</span>` : a.installed === false ? ' <span class="access-tag">Not installed</span>' : ''}</span>
+            ${a.description ? `<span class="agent-more-desc">${esc(a.description)}</span>` : ''}
+          </span>
+        </button>`,
+      )
+      .join('');
+  };
+  search.oninput = paint;
+  list.onclick = (e) => {
+    const b = e.target.closest('button[data-agent-id]');
+    if (!b || b.disabled) return;
+    dlg.close();
+    chatSwitchAgent(b.dataset.agentId);
+  };
+  paint();
+  dlg.showModal();
+  search.focus();
 }
 
 function openEffortMenu() {
@@ -630,6 +781,7 @@ function wireChat() {
   $('#agentLog').addEventListener('click', (e) => {
     const s = e.target.closest('[data-suggest]');
     if (s) return chatSend(s.dataset.suggest);
+    if (e.target.closest('[data-chat-install]')) return chatInstall();
     if (e.target.closest('[data-chat-retry]')) return chatConnect();
     if (e.target.closest('[data-open-node]')) return window.open('https://nodejs.org/', '_blank');
     const m = e.target.closest('[data-signin]');

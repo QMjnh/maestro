@@ -216,14 +216,18 @@ sealed class Api(SpotifyApp spotify, AgentChat chat)
                 return await chat.Connect(b.Str("agent") ?? throw new BadRequest("agent is required"), b.Str("sessionId"));
             }
 
+            case ("POST", "/api/chat/install"):
+                return await chat.Install(Body().Str("agent") ?? throw new BadRequest("agent is required"));
+
             case ("POST", "/api/chat/new"):
                 return await chat.NewChat();
 
             case ("POST", "/api/chat/prompt"):
             {
-                var text = Body().Str("text")?.Trim();
+                var b = Body();
+                var text = b.Str("text")?.Trim();
                 if (string.IsNullOrEmpty(text)) throw new BadRequest("text is required");
-                chat.Prompt(text);
+                chat.Prompt(text, b.Str("handoff"));
                 return new { ok = true };
             }
 

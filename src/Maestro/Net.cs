@@ -25,6 +25,27 @@ static class Net
         Timeout = TimeSpan.FromSeconds(15),
     };
 
+    static readonly HttpClient DownloadClient = new(new SocketsHttpHandler
+    {
+        AutomaticDecompression = DecompressionMethods.All,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    })
+    {
+        Timeout = TimeSpan.FromMinutes(5),
+    };
+
+    public static async Task DownloadFile(string url, string destination, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.TryAddWithoutValidation("User-Agent", UA);
+        using var res = await DownloadClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!res.IsSuccessStatusCode)
+            throw new UpstreamException($"{req.RequestUri!.Host} responded {(int)res.StatusCode}", (int)res.StatusCode);
+        await using var input = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var output = File.Create(destination);
+        await input.CopyToAsync(output, ct).ConfigureAwait(false);
+    }
+
     public static Task<string> GetText(string url, IDictionary<string, string>? headers = null) =>
         Send(new HttpRequestMessage(HttpMethod.Get, url), headers);
 
