@@ -11,6 +11,7 @@ const chat = {
   log: Array.isArray(chatSaved.log) ? chatSaved.log : [], // { k: 'user' | 'agent' | 'tool' | 'error' | 'note', ... }
   needsHandoff: !!chatSaved.needsHandoff, // carry chat.log into the next prompt after switching agents
   prefs: chatSaved.prefs || {}, // agent id -> { config option id: value } picked by the user
+  optionsCache: chatSaved.optionsCache || {}, // agent id -> its last configOptions, so the pickers work before it starts
   agents: [],
   access: null, // { level, custom, recommended, capabilities } from AgentAccess.cs
   status: 'idle', // idle | connecting | ready | install | installing | signin | error
@@ -20,9 +21,11 @@ const chat = {
   account: '',
   configOptions: [],
   busy: false,
+  sending: null, // a message waiting for the agent to start
   thinking: false,
   stream: null, // the agent message being written
   connecting: null,
+  openGroups: new Set(), // tool groups the user expanded, by their first tool call id
 };
 
 const CHAT_LOG_MAX = 200;
@@ -41,13 +44,16 @@ function persistChat() {
       log: chat.log.slice(-CHAT_LOG_MAX),
       needsHandoff: chat.needsHandoff,
       prefs: chat.prefs,
+      optionsCache: chat.optionsCache,
     }),
   );
 }
 
 // ---- config options (model, effort, ...) as the agent describes them --------------------------------------------
 
-const chatOption = (category) => chat.configOptions.find((o) => o.category === category || o.id === category);
+// Until the agent is running, show the options it had last time.
+const chatOptions = () => (chat.configOptions.length ? chat.configOptions : chat.optionsCache[chat.agent] || []);
+const chatOption = (category) => chatOptions().find((o) => o.category === category || o.id === category);
 const optionValues = (o) => (o?.options || []).flatMap((v) => (Array.isArray(v.options) ? v.options : [v]));
 const optionName = (o) => optionValues(o).find((v) => v.value === o?.currentValue)?.name || o?.currentValue || '';
 const agentName = (id = chat.agent) =>
@@ -55,13 +61,26 @@ const agentName = (id = chat.agent) =>
   { 'claude-acp': 'Claude', 'codex-acp': 'Codex', cursor: 'Cursor', 'antigravity-acp': 'Antigravity', opencode: 'OpenCode', gemini: 'Gemini CLI', 'github-copilot-cli': 'GitHub Copilot' }[id] ||
   id;
 
+function setChatOptions(options) {
+  chat.configOptions = options || [];
+  if (chat.configOptions.length) chat.optionsCache[chat.agent] = chat.configOptions;
+}
+
 function applyChatSnapshot(r) {
   chat.account = r.account || chat.account;
-  chat.configOptions = r.configOptions || [];
-  chat.busy = !!r.busy;
+  setChatOptions(r.configOptions);
+  chat.busy = !!r.busy || !!chat.sending;
 }
 
 async function setChatOption(id, value, { remember = true } = {}) {
+  if (chat.status !== 'ready') {
+    // Not running yet: remember the pick; applyChatPrefs sets it once the agent starts.
+    (chat.prefs[chat.agent] ||= {})[id] = value;
+    const o = chatOptions().find((x) => x.id === id);
+    if (o) o.currentValue = value;
+    persistChat();
+    return renderChatBar();
+  }
   try {
     applyChatSnapshot(await api('/api/chat/option', { method: 'POST', body: { configId: id, value } }));
     if (remember) (chat.prefs[chat.agent] ||= {})[id] = value;
@@ -236,10 +255,11 @@ function chatConnect({ fresh = false } = {}) {
   chat.needsInstall = null;
   chat.needsNode = false;
   renderChat();
-  chat.connecting = (async () => {
+  const target = chat.agent;
+  const attempt = (async () => {
     try {
-      await loadChatMeta();
-      const r = await api('/api/chat/connect', { method: 'POST', body: { agent: chat.agent, sessionId: fresh ? null : chat.sessionId } });
+      const r = await api('/api/chat/connect', { method: 'POST', body: { agent: target, sessionId: fresh ? null : chat.sessionId } });
+      if (chat.agent !== target) return false;
       if (r.needsInstall) {
         chat.status = 'install';
         chat.needsInstall = r.needsInstall;
@@ -262,16 +282,21 @@ function chatConnect({ fresh = false } = {}) {
       await applyChatPrefs();
       return true;
     } catch (err) {
+      if (chat.agent !== target) return false;
       chat.status = 'error';
       chat.message = err.message;
       chat.needsNode = !!err.node;
       return false;
-    } finally {
-      chat.connecting = null;
-      persistChat();
-      renderChat();
     }
   })();
+  chat.connecting = attempt.then((ok) => {
+    chat.connecting = null;
+    // The user picked another agent while this one was starting: start that one instead.
+    if (chat.agent !== target) return chatConnect();
+    persistChat();
+    renderChat();
+    return ok;
+  });
   return chat.connecting;
 }
 
@@ -298,11 +323,11 @@ async function chatInstall() {
   }
 }
 
-/** Build a compact transcript of chat.log to hand off context when switching agents. */
-function buildHandoff() {
+/** Build a compact transcript of the chat so far to hand off context when switching agents. */
+function buildHandoff(entries) {
   const MAX_CHARS = 12000;
   const lines = [];
-  for (const e of chat.log) {
+  for (const e of entries) {
     if (e.k === 'user') lines.push(`User: ${e.text}`);
     else if (e.k === 'agent') lines.push(`Assistant: ${e.text}`);
     else if (e.k === 'tool') lines.push(`[Action: ${toolLabel(e)}${e.status === 'failed' ? ' (failed)' : ''}]`);
@@ -325,14 +350,24 @@ function buildHandoff() {
 async function chatSend(text) {
   text = text.trim();
   if (!text || chat.busy || chat.status === 'installing') return false;
-  if (chat.status !== 'ready' && !(await chatConnect())) return false;
-  const handoff = chat.needsHandoff ? buildHandoff() : null;
-  chat.log.push({ k: 'user', text });
-  chat.busy = true;
-  chat.thinking = false;
-  chat.stream = null;
-  persistChat();
+  // Show the message right away; if the agent is still starting, it goes out as soon as it's up.
+  const entry = { k: 'user', text };
+  const send = {}; // this send, so Stop can call it off while the agent starts
+  chat.log.push(entry);
+  Object.assign(chat, { busy: true, sending: send, thinking: false, stream: null });
   renderChat();
+  const ready = chat.status === 'ready' || (await chatConnect());
+  if (chat.sending !== send) return true; // stopped while the agent was starting
+  chat.sending = null;
+  if (!ready) {
+    chat.busy = false;
+    chat.log.splice(chat.log.indexOf(entry), 1); // the card below says why; the text goes back in the box
+    persistChat();
+    renderChat();
+    return false;
+  }
+  const handoff = chat.needsHandoff ? buildHandoff(chat.log.slice(0, chat.log.indexOf(entry))) : null;
+  persistChat();
   try {
     await api('/api/chat/prompt', { method: 'POST', body: handoff ? { text, handoff } : { text } });
     if (handoff) {
@@ -348,6 +383,13 @@ async function chatSend(text) {
 }
 
 function chatStop() {
+  if (chat.sending) {
+    chat.sending = null;
+    chat.busy = false;
+    chat.log.push({ k: 'note', text: 'Stopped.' });
+    persistChat();
+    return renderChat();
+  }
   api('/api/chat/cancel', { method: 'POST' }).catch((err) => toast(err.message, { error: true }));
 }
 
@@ -418,7 +460,8 @@ window.chrome?.webview?.addEventListener('message', (e) => {
   } else if (ev.type === 'account') {
     chat.account = ev.account || '';
   } else if (ev.type === 'options') {
-    chat.configOptions = ev.configOptions || [];
+    setChatOptions(ev.configOptions);
+    persistChat();
   } else if (ev.type === 'update') {
     return onChatUpdate(ev.update);
   } else if (ev.type === 'turn_end') {
@@ -429,6 +472,7 @@ window.chrome?.webview?.addEventListener('message', (e) => {
     if (ev.error) chat.log.push({ k: 'error', text: ev.error });
     else if (ev.stopReason === 'cancelled') chat.log.push({ k: 'note', text: 'Stopped.' });
     else if (ev.stopReason === 'refusal') chat.log.push({ k: 'note', text: 'The agent declined to answer.' });
+    else if (ev.stopReason === 'max_tokens' || ev.stopReason === 'max_turn_requests') chat.log.push({ k: 'note', text: 'The agent hit its limit for one reply.' });
     persistChat();
   }
   renderChat();
@@ -486,7 +530,7 @@ function describePick(a = {}) {
 
 const TOOL_LABELS = {
   get_state: () => 'Checking the player',
-  search: (a) => `Searching ${quoted(a.query || '')}`,
+  search: (a) => (a.query ? `Searching ${quoted(a.query)}` : 'Searching'),
   resolve_link: () => 'Opening a link',
   get_home: () => 'Looking at your home page',
   play: (a) => `Playing ${describePick(a)}`,
@@ -513,7 +557,7 @@ const TOOL_LABELS = {
   move_in_playlist: (a) => `Reordering ${quoted(a.playlist || 'a playlist')}`,
   rename_playlist: (a) => `Renaming a playlist to ${quoted(a.name || '')}`,
   delete_playlist: (a) => `Deleting ${quoted(a.playlist || 'a playlist')}`,
-  show_view: (a) => `Showing ${a.view === 'playlist' ? quoted(a.playlist || 'a playlist') : a.view}`,
+  show_view: (a) => (a.view ? `Showing ${a.view === 'playlist' ? quoted(a.playlist || 'a playlist') : a.view}` : 'Changing the view'),
   get_settings: () => 'Checking settings',
   update_settings: () => 'Changing settings',
   manage_spotify: (a) => ({ restart: 'Restarting Spotify', show_login: 'Opening Spotify to sign in' })[a.action] || 'Changing Spotify startup',
@@ -523,37 +567,74 @@ const TOOL_LABELS = {
   Task: (a) => a.description || 'Running a helper agent',
 };
 
-// Claude says mcp__maestro__play or "maestro: play", Codex says mcp.maestro.play.
-const toolKey = (e) => String(e.name || e.title || '').replace(/^(mcp(__|\.))?maestro(__|\s*[:.]\s*)/i, '').trim();
+// Claude says mcp__maestro__play or "maestro: play", Codex says mcp.maestro.play (and "Web search" for its own).
+const toolKey = (e) =>
+  e.input?.type === 'webSearch' ? 'WebSearch' : String(e.name || e.title || '').replace(/^(mcp(__|\.))?maestro(__|\s*[:.]\s*)/i, '').trim();
+// Codex wraps MCP arguments as { server, tool, arguments }.
+const toolArgs = (e) => (e.input?.tool && e.input.arguments ? e.input.arguments : e.input || {});
 
 function toolLabel(e) {
   const label = TOOL_LABELS[toolKey(e)];
   try {
-    if (label) return label(e.input || {});
+    if (label) return label(toolArgs(e));
   } catch {} // arguments still streaming in
   return e.title || toolKey(e) || 'Working';
 }
 
 // ---- drawing -----------------------------------------------------------------------------------------------------
 
-/** Agent text: escaped, with **bold** and `code`; line breaks come from white-space: pre-wrap. */
+/** Agent text: escaped, with **bold**, `code`, and [links](https://…); line breaks come from white-space: pre-wrap. */
 function chatHtml(s) {
   return esc(s)
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+}
+
+const toolState = (e) => (e.status === 'failed' ? 'failed' : e.status === 'completed' ? 'done' : 'running');
+const toolMark = (state) => (state === 'running' ? '<span class="spin"></span>' : icon(state === 'done' ? 'check' : 'close', 14));
+
+function toolRow(e) {
+  const state = toolState(e);
+  const label = toolLabel(e);
+  return `<div class="msg tool ${state}" title="${esc(e.error || label)}">${toolMark(state)}<span class="tool-text">${esc(label)}</span></div>`;
+}
+
+/** Several tool calls in a row fold into one line that shows what's happening now; click to see them all. */
+function toolGroup(tools) {
+  const key = tools[0].id;
+  const open = chat.openGroups.has(key);
+  const running = tools.findLast((t) => toolState(t) === 'running');
+  const failed = tools.filter((t) => toolState(t) === 'failed').length;
+  const state = running ? 'running' : 'done';
+  const text = running ? toolLabel(running) : `Used ${tools.length} tools` + (failed ? ` · ${failed} failed` : '');
+  return `<div class="tool-group${open ? ' open' : ''}">
+    <button type="button" class="msg tool ${state}" data-tool-group="${esc(key)}" aria-expanded="${open}">${toolMark(state)}<span class="tool-text">${esc(text)}</span><span class="tool-count">${running ? tools.length : ''}</span>${icon('chevronDown', 14)}</button>
+    ${open ? `<div class="tool-list">${tools.map(toolRow).join('')}</div>` : ''}
+  </div>`;
 }
 
 function chatEntry(e, i) {
   if (e.k === 'user') return `<div class="msg user">${esc(e.text)}</div>`;
-  if (e.k === 'agent') return `<div class="msg agent" data-i="${i}">${chatHtml(e.text)}</div>`;
+  if (e.k === 'agent') return `<div class="msg reply" data-i="${i}">${chatHtml(e.text)}</div>`;
   if (e.k === 'error') return `<div class="msg error">${esc(e.text)}</div>`;
   if (e.k === 'note') return `<div class="msg note">${esc(e.text)}</div>`;
-  if (e.k === 'tool') {
-    const state = e.status === 'failed' ? 'failed' : e.status === 'completed' ? 'done' : 'running';
-    const mark = state === 'running' ? '<span class="spin"></span>' : icon(state === 'done' ? 'check' : 'close', 14);
-    return `<div class="msg tool ${state}" title="${esc(e.error || '')}">${mark}<span>${esc(toolLabel(e))}</span></div>`;
-  }
   return '';
+}
+
+function chatLogHtml() {
+  let html = '';
+  for (let i = 0; i < chat.log.length; i++) {
+    if (chat.log[i].k !== 'tool') {
+      html += chatEntry(chat.log[i], i);
+      continue;
+    }
+    const tools = [];
+    while (chat.log[i]?.k === 'tool') tools.push(chat.log[i++]);
+    i--;
+    html += tools.length === 1 ? toolRow(tools[0]) : toolGroup(tools);
+  }
+  return html;
 }
 
 function renderChatLog() {
@@ -562,7 +643,7 @@ function renderChatLog() {
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
   let html = '';
   if (chat.log.length) {
-    html = chat.log.map(chatEntry).join('');
+    html = chatLogHtml();
   } else if (chat.status !== 'signin' && chat.status !== 'install') {
     html = `<div class="agent-empty">
       <div class="agent-empty-icon">${icon('sparkle', 28)}</div>
@@ -584,7 +665,8 @@ function renderChatLog() {
         ${(chat.signIn.methods || []).map((m) => `<button class="btn ghost" data-signin="${esc(m.id)}" title="${esc(m.description || '')}">${esc(m.name)}</button>`).join('')}
         <button class="btn primary" data-chat-retry>I've signed in</button>
       </div></div>`;
-  } else if (chat.status === 'connecting' || chat.status === 'installing') {
+  } else if (chat.status === 'installing') {
+    // Starting happens quietly (a message sent meanwhile waits for it); installing is something the user asked for.
     html += `<div class="msg note busy"><span class="spin"></span>${esc(chat.message)}</div>`;
   } else if (chat.status === 'error') {
     html += `<div class="agent-card error"><div>${esc(chat.message)}</div><div class="agent-card-actions">
@@ -601,7 +683,7 @@ function renderChatLog() {
 
 /** Streaming text only changes the last message, so update just that one. */
 function paintChatStream() {
-  const el = $$('#agentLog .msg.agent').at(-1);
+  const el = $$('#agentLog .msg.reply').at(-1);
   const i = chat.log.indexOf(chat.stream);
   if (el && +el.dataset.i === i && !$('#agentLog .msg.typing')) {
     el.innerHTML = chatHtml(chat.stream.text);
@@ -614,16 +696,20 @@ function renderChatBar() {
   const model = chatOption('model');
   const effort = chatOption('thought_level');
   const pick = $('#agentPick');
-  pick.innerHTML = `<span class="agent-pick-name">${esc(agentName())}${model ? ` · ${esc(optionName(model))}` : ''}</span>${icon('chevronDown', 14)}`;
-  pick.title = 'Choose the agent and model';
+  pick.innerHTML = `<span class="agent-pick-name">${esc(agentName())}</span>${icon('chevronDown', 14)}`;
+  pick.title = `Agent: ${agentName()}`;
+  const mod = $('#agentModel');
+  mod.hidden = !model;
+  if (model) mod.innerHTML = `<span class="agent-pick-name">${esc(optionName(model))}</span>${icon('chevronDown', 14)}`;
+  mod.title = model ? `${model.name || 'Model'}: ${optionName(model)}` : '';
   const eff = $('#agentEffort');
   eff.hidden = !effort;
-  if (effort) eff.innerHTML = `<span class="agent-pick-name">${effort.currentValue === 'default' ? 'Default effort' : esc(optionName(effort))}</span>${icon('chevronDown', 14)}`;
-  eff.title = effort?.name || '';
+  if (effort) eff.innerHTML = `<span class="agent-pick-name">${effort.currentValue === 'default' ? 'Default' : esc(optionName(effort))}</span>${icon('chevronDown', 14)}`;
+  eff.title = effort ? `${effort.name}: ${optionName(effort)}` : '';
   const acc = $('#agentAccess');
   const level = chat.access?.level || 'recommended';
   const meta = accessMeta(level);
-  acc.innerHTML = `${icon('shield', 13)}<span class="agent-pick-name">${esc(meta.name)}</span>${icon('chevronDown', 14)}`;
+  acc.innerHTML = icon('shield', 15);
   acc.classList.toggle('warn', accessIsRisky(level, chat.access?.custom));
   acc.title = `Access: ${meta.name} — ${accessSummary(level, chat.access?.custom || [])}`;
   const send = $('#agentSend');
@@ -647,7 +733,6 @@ async function openAgentMenu() {
   if (!chat.agents.length) {
     try { await loadChatMeta(); } catch {}
   }
-  const model = chatOption('model');
   const all = chat.agents.length ? chat.agents : [{ id: chat.agent, name: agentName(), available: true, featured: true }];
   const featured = all.filter((a) => a.featured !== false);
   const extras = all.filter((a) => a.featured === false);
@@ -669,11 +754,15 @@ async function openAgentMenu() {
       run: openMoreAgentsDialog,
     });
   }
-  if (model) {
-    entries.push('-', { label: model.name || 'Model' });
-    for (const v of optionValues(model)) entries.push({ checked: v.value === model.currentValue, text: v.name || v.value, run: () => setChatOption(model.id, v.value) });
-  }
   openMenu($('#agentPick').getBoundingClientRect(), entries);
+}
+
+function openModelMenu() {
+  const model = chatOption('model');
+  if (!model) return;
+  const entries = [{ label: model.name || 'Model' }];
+  for (const v of optionValues(model)) entries.push({ checked: v.value === model.currentValue, text: v.name || v.value, run: () => setChatOption(model.id, v.value) });
+  openMenu($('#agentModel').getBoundingClientRect(), entries);
 }
 
 async function openMoreAgentsDialog() {
@@ -748,9 +837,12 @@ function sizeChatInput() {
 function wireChat() {
   hydrateIcons($('#agentPanel'));
   $('#btnAgent').onclick = () => toggleChat();
+  // Get the agent going while the pointer heads for the button; starting takes a few seconds.
+  $('#btnAgent').addEventListener('pointerenter', () => chat.status === 'idle' && chatConnect());
   $('#agentClose').onclick = () => toggleChat(false);
   $('#agentNew').onclick = chatNew;
   $('#agentPick').onclick = openAgentMenu;
+  $('#agentModel').onclick = openModelMenu;
   $('#agentEffort').onclick = openEffortMenu;
   $('#agentAccess').onclick = openAccessMenu;
   loadChatMeta().then(renderChatBar).catch(() => {});
@@ -781,6 +873,12 @@ function wireChat() {
   $('#agentLog').addEventListener('click', (e) => {
     const s = e.target.closest('[data-suggest]');
     if (s) return chatSend(s.dataset.suggest);
+    const g = e.target.closest('[data-tool-group]');
+    if (g) {
+      const key = g.dataset.toolGroup;
+      if (!chat.openGroups.delete(key)) chat.openGroups.add(key);
+      return renderChatLog();
+    }
     if (e.target.closest('[data-chat-install]')) return chatInstall();
     if (e.target.closest('[data-chat-retry]')) return chatConnect();
     if (e.target.closest('[data-open-node]')) return window.open('https://nodejs.org/', '_blank');

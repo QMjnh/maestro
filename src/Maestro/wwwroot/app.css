@@ -308,12 +308,25 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .agent-title svg { color: #b9a5ff; }
 .agent-account { margin-left: auto; margin-right: 4px; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-log { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; user-select: text; }
+.agent-log > * { flex-shrink: 0; }
 .agent .spin { width: 12px; height: 12px; border: 2px solid var(--dim); border-top-color: var(--text); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
 
 .msg { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
 .msg.user { align-self: flex-end; max-width: 85%; background: var(--hover); padding: 8px 12px; border-radius: 16px 16px 4px 16px; }
-.msg.agent code { white-space: normal; }
-.msg.tool { align-self: flex-start; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); background: var(--panel-2); padding: 5px 10px; border-radius: 8px; white-space: normal; }
+.msg.reply code { white-space: normal; }
+.msg.reply a { color: inherit; text-decoration: underline; text-decoration-color: var(--dim); }
+.msg.reply a:hover { text-decoration-color: currentColor; }
+.msg.tool { align-self: flex-start; display: flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; font-size: 12.5px; color: var(--muted); background: var(--panel-2); padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
+.msg.tool svg { flex: none; }
+.tool-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tool-group { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.tool-group > .msg.tool:hover { color: var(--text); background: var(--hover); }
+.tool-group > .msg.tool > svg:last-child { flex: none; color: var(--dim); transition: transform .15s; }
+.tool-group.open > .msg.tool > svg:last-child { transform: rotate(180deg); }
+.tool-count { color: var(--dim); font-variant-numeric: tabular-nums; }
+.tool-count:empty { display: none; }
+.tool-list { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; padding-left: 10px; margin-left: 6px; border-left: 2px solid var(--line); }
+.tool-list .msg.tool { background: none; padding: 2px 4px; }
 .msg.tool.done svg { color: var(--spotify); }
 .msg.tool.failed svg { color: var(--youtube); }
 .msg.tool.failed { cursor: help; }
@@ -351,7 +364,10 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .agent-pick.warn { color: #f5b942; }
 .agent-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-pick svg { flex: none; }
-#agentAccess { flex-shrink: 0; }
+#agentPick .agent-pick-name { max-width: 96px; }
+#agentModel .agent-pick-name { max-width: 120px; }
+#agentEffort .agent-pick-name { max-width: 72px; }
+#agentAccess { flex-shrink: 0; padding: 5px 6px; }
 .agent-send { margin-left: auto; width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--text); color: #000; }
 .agent-send:disabled { opacity: .3; cursor: default; }
 .agent-send.stop { background: var(--hover); color: var(--text); }

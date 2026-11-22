@@ -114,7 +114,7 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
                     ["distribution"] = a.Binary != null ? "binary" : "npx",
                 };
             })]),
-            ["current"] = await Snapshot(),
+            ["current"] = Snapshot(),
             ["access"] = AgentAccess.Describe(),
         };
     }
@@ -162,13 +162,19 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
     /// Never downloads automatically: returns <c>needsInstall</c> when the agent isn't installed yet.</summary>
     public async Task<JsonNode> Connect(string agentId, string? resume)
     {
-        await RefreshRegistry();
-        var info = Catalog().FirstOrDefault(a => a.Id == agentId) ?? throw new ArgumentException("Unknown agent " + agentId);
+        // Featured agents start from the built-in definitions; only other registry agents wait for the registry.
+        var info = Catalog().FirstOrDefault(a => a.Id == agentId);
+        if (info == null)
+        {
+            await RefreshRegistry();
+            info = Catalog().FirstOrDefault(a => a.Id == agentId) ?? throw new ArgumentException("Unknown agent " + agentId);
+        }
         await gate.WaitAsync();
         try
         {
-            if (conn is { Alive: true } && agent == info && sessionId != null && (resume == null || resume == sessionId))
-                return await Snapshot();
+            // By id: the registry may have refreshed the definition since this agent started.
+            if (conn is { Alive: true } && agent?.Id == info.Id && sessionId != null && (resume == null || resume == sessionId))
+                return Snapshot();
 
             var installed = FindInstalled(info);
             if (installed == null)
@@ -178,7 +184,7 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
                 return InstallNeeded(info);
             }
 
-            if (conn is not { Alive: true } || agent != info)
+            if (conn is not { Alive: true } || agent?.Id != info.Id)
             {
                 await Stop();
                 await Start(info, installed);
@@ -196,7 +202,7 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
                         resumed = await TryResume(resume, "session/load");
                 }
                 if (!resumed) await NewSessionLocked();
-                var snap = await Snapshot();
+                var snap = Snapshot();
                 snap["resumed"] = resumed;
                 if (resume != null && !resumed) snap["resumeError"] = resumeError ?? "This agent can't continue earlier chats.";
                 return snap;
@@ -224,7 +230,7 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
                 catch (Exception e) when (e is AcpException or TimeoutException) { }
             }
             await NewSessionLocked();
-            return await Snapshot();
+            return Snapshot();
         }
         catch (AcpException e) when (e.Code == -32000)
         {
@@ -283,13 +289,13 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
         {
             await c.Request("session/set_model", new JsonObject { ["sessionId"] = sessionId, ["modelId"] = value?.DeepClone() }, TimeSpan.FromSeconds(30));
             UpdateOptionValue(configId, value);
-            return await Snapshot();
+            return Snapshot();
         }
         if (configId == "__legacy_mode")
         {
             await c.Request("session/set_mode", new JsonObject { ["sessionId"] = sessionId, ["modeId"] = value?.DeepClone() }, TimeSpan.FromSeconds(30));
             UpdateOptionValue(configId, value);
-            return await Snapshot();
+            return Snapshot();
         }
         var p = new JsonObject { ["sessionId"] = sessionId, ["configId"] = configId };
         if (value is JsonValue v && v.GetValueKind() is JsonValueKind.True or JsonValueKind.False)
@@ -300,7 +306,7 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
         else p["value"] = value?.DeepClone();
         var result = await c.Request("session/set_config_option", p, TimeSpan.FromSeconds(30));
         if (result?["configOptions"] is JsonArray options) configOptions = options.DeepClone() as JsonArray;
-        return await Snapshot();
+        return Snapshot();
     }
 
     /// <summary>Sign in with one of the agent's methods. Terminal methods open a console window running the agent's login.</summary>
@@ -1144,20 +1150,16 @@ sealed partial class AgentChat(Action<JsonNode> post) : IDisposable
 
     // ---- state for the page ----------------------------------------------------------------------------------------
 
-    async Task<JsonObject> Snapshot()
+    JsonObject Snapshot() => new()
     {
-        await RefreshRegistry();
-        return new JsonObject
-        {
-            ["agent"] = agent?.Id,
-            ["agentName"] = agent?.Name,
-            ["connected"] = conn is { Alive: true } && sessionId != null,
-            ["sessionId"] = sessionId,
-            ["account"] = account,
-            ["busy"] = busy,
-            ["configOptions"] = configOptions?.DeepClone(),
-        };
-    }
+        ["agent"] = agent?.Id,
+        ["agentName"] = agent?.Name,
+        ["connected"] = conn is { Alive: true } && sessionId != null,
+        ["sessionId"] = sessionId,
+        ["account"] = account,
+        ["busy"] = busy,
+        ["configOptions"] = configOptions?.DeepClone(),
+    };
 
     JsonObject InstallNeeded(AgentInfo info)
     {
