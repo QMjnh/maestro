@@ -12,19 +12,17 @@ static class AgentAccess
 {
     public sealed record Capability(string Id, string Name, string Description, bool Risky, string[] Agents);
 
-    static readonly string[] Both = ["claude-acp", "codex-acp"];
-
     public static readonly Capability[] Capabilities =
     [
-        new("web", "Web search", "Search the web and read pages, e.g. to find the song someone describes.", false, Both),
-        new("subagents", "Sub-agents", "Hand parts of a request to helper agents.", false, Both),
+        new("web", "Web search", "Search the web and read pages, e.g. to find the song someone describes.", false, []),
+        new("subagents", "Sub-agents", "Hand parts of a request to helper agents.", false, []),
         new("images", "Image generation", "Create images.", false, ["codex-acp"]),
-        new("files_read", "Read files", "Read files on this PC.", true, Both),
-        new("files_edit", "Edit files", "Create and change files on this PC.", true, Both),
-        new("shell", "Run commands", "Run terminal commands on this PC.", true, Both),
-        new("browser", "Browser and desktop control", "Use a browser or control apps on your desktop.", true, ["codex-acp"]),
-        new("schedule", "Scheduled tasks", "Set up tasks that run later or in the cloud.", true, Both),
-        new("setup", "Your agent setup", "Your MCP servers, connected apps (like Gmail and Google Drive), plugins, hooks, and instructions.", true, Both),
+        new("files_read", "Read files", "Read files on this PC.", true, []),
+        new("files_edit", "Edit files", "Create and change files on this PC.", true, []),
+        new("shell", "Run commands", "Run terminal commands on this PC.", true, []),
+        new("browser", "Browser and desktop control", "Use a browser or control apps on your desktop.", true, []),
+        new("schedule", "Scheduled tasks", "Set up tasks that run later or in the cloud.", true, []),
+        new("setup", "Your agent setup", "Your MCP servers, connected apps (like Gmail and Google Drive), plugins, hooks, and instructions.", true, []),
     ];
 
     public static readonly string[] Levels = ["minimal", "recommended", "full", "custom"];
@@ -196,6 +194,14 @@ static class AgentAccess
         if (kind == "execute" && !on.Contains("shell")) return false;
         if (kind is "edit" or "delete" or "move" && !on.Contains("files_edit")) return false;
         if (kind == "read" && !on.Contains("files_read")) return false;
+        if (kind == "fetch" && !on.Contains("web")) return false;
+        if (kind == "search")
+        {
+            var joined = string.Join(" ", names);
+            var looksWeb = joined.Contains("web", StringComparison.OrdinalIgnoreCase) || joined.Contains("google", StringComparison.OrdinalIgnoreCase) || joined.Contains("internet", StringComparison.OrdinalIgnoreCase);
+            if (looksWeb && !on.Contains("web")) return false;
+            if (!looksWeb && !on.Contains("files_read") && !on.Contains("web")) return false;
+        }
         var toolName = call.Str("_meta.claudeCode.toolName") ?? call.Str("name");
         if (toolName != null)
         {
