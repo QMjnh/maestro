@@ -4,9 +4,10 @@
 
 # Maestro
 
-**Spotify, YouTube, and SoundCloud in one Windows music player.** Search everywhere, queue anything, and listen without switching apps.
+**Spotify, YouTube, and SoundCloud in one Windows music player.** Search all three at once, mix songs from any of
+them in one queue, and stop switching apps.
 
-**No API keys** · **Ad-free** · **Windows 10 / 11**
+**Free** · **No ads** · **No setup** · **Windows 10 / 11**
 
 [![Download for Windows](https://img.shields.io/badge/Download-Maestro%20for%20Windows-1db954?style=for-the-badge&logo=windows)](https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe)
 [![Website](https://img.shields.io/badge/Website-qmjnh.github.io%2Fmaestro-333?style=for-the-badge)](https://qmjnh.github.io/maestro/)
@@ -15,103 +16,109 @@
 [![Latest release](https://img.shields.io/github/v/release/QMjnh/maestro?style=flat-square)](https://github.com/QMjnh/maestro/releases/latest)
 [![License](https://img.shields.io/badge/license-BUSL%201.1%20(personal%20use%20free)-yellow?style=flat-square)](LICENSE)
 
-- **Three services, one player.** Play Spotify, YouTube, and SoundCloud from one window with one shared queue.
-- **Unified search & links.** Search all three services side by side, or paste any Spotify, YouTube, or SoundCloud link.
-- **Mixed playlists & favorites.** Combine tracks from any service in your playlists and Favorites — stored locally on your PC.
-- **No API keys or Spotify Premium required.** Spotify plays through your local Spotify desktop app (works with free accounts and [SpotX](https://github.com/SpotX-Official/SpotX)).
-- **Even volume.** One volume slider across every service, with automatic loudness leveling for YouTube and SoundCloud.
-- **Built-in AI agent.** Press `Ctrl+J` to ask Claude, Codex, Cursor, Antigravity, OpenCode, Gemini CLI, GitHub Copilot, and more to play, queue, like, or organize your music.
+## What you get
+
+- **Three services, one player.** Spotify, YouTube, and SoundCloud all play in the same window.
+- **One search.** Type once and see results from all three side by side, or paste a link from any of them.
+- **One queue, mixed playlists.** Put songs from different services together. Maestro switches between them as each
+  song ends.
+- **Even volume.** Maestro levels every song to the same loudness, so a quiet Spotify song is never followed by a
+  blaring YouTube video.
+- **Home and autoplay.** Picks based on what you listen to, and music that keeps going when your queue runs out.
+- **Zero setup.** Works with a free Spotify account. No Premium, no developer keys, nothing to configure.
+- **Ad-free.** Maestro has no ads. Add [SpotX](https://github.com/SpotX-Official/SpotX) to your Spotify app and
+  Spotify's ads are gone too.
+- **Your library stays on your PC.** Playlists and liked songs are saved locally.
+- **Ask an AI to DJ.** Press `Ctrl+J` and tell Claude, Codex, Gemini, Copilot, and others what you want to hear.
 
 ## Install
 
-**Portable `.exe`:** Download [Maestro-win-x64.exe](https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe) from the [latest release](https://github.com/QMjnh/maestro/releases/latest) and run it. *(If Windows SmartScreen warns on first launch, click More info → Run anyway.)*
+1. **Download [Maestro-win-x64.exe](https://github.com/QMjnh/maestro/releases/latest/download/Maestro-win-x64.exe)**
+   and open it.
+2. **For Spotify songs**, install the [Spotify desktop app](https://www.spotify.com/download) from spotify.com and
+   sign in. YouTube and SoundCloud work without it.
 
-**Or install with PowerShell** (adds Start menu entry, `maestro` command, and one-command updates — no admin needed):
+> On the "Windows protected your PC" screen, click **More info**, then **Run anyway**.
+
+**Want a Start menu entry and one-command updates?** Paste this into PowerShell instead (no admin needed):
 
 ```powershell
 irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1 | iex
 ```
 
-Run the same command again to update. Uninstall anytime from **Settings → Apps**.
+Run the same line again to update. Uninstall from **Settings › Apps** in Windows.
+Installer options are in the [technical guide](docs/technical.md#installer-options).
 
-<details>
-<summary>Installer options</summary>
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/QMjnh/maestro/main/install.ps1))) -DesktopShortcut
-```
-
-| Flag | Description |
-|---|---|
-| `-DesktopShortcut` | Add a desktop shortcut. |
-| `-Version v0.0.4` | Install a specific release. |
-| `-InstallDir <path>` | Custom install folder (default: `%LOCALAPPDATA%\Programs\Maestro`). |
-| `-NoPath` | Don't add `maestro` to PATH. |
-| `-NoLaunch` | Don't open Maestro after installing. |
-| `-Uninstall` | Remove Maestro (add `-Purge` to also delete local settings and playlists). |
-
-</details>
+**First launch:** if Spotify is already open, Maestro asks once to restart it. From then on, Maestro starts Spotify
+hidden in the background and closes it when you quit. Change this anytime in Settings.
 
 ## Using Maestro
 
-| Feature | What it does |
+| | |
 |---|---|
-| **Home** | Personalized picks from your Spotify home feed, listening history, and related mixes across all three services. |
-| **Search & links** | Search Spotify, YouTube, and SoundCloud at once, or paste any track, album, or playlist URL. |
-| **Queue & autoplay** | Drag to reorder, shuffle, repeat, and auto-continue with recommendations from the same service or all services. |
-| **Favorites & playlists** | Save songs from any service with the heart or `+` button, or drag tracks onto playlists in the sidebar. |
-| **Volume leveling** | Enabled in Settings by default to match YouTube and SoundCloud loudness to Spotify. |
-| **Spotify background mode** | Maestro starts Spotify hidden in the background and closes it on exit (configurable in Settings). Opening Spotify yourself leaves it visible. |
-| **Shortcuts** | `Space` play/pause · `Ctrl+←/→` previous/next · `Shift+←/→` seek ±10s · `/` or `Ctrl+K` search · `Ctrl+J` Agent |
+| **Home** | Picks from your Spotify home feed and listening history, plus related mixes from all three services. |
+| **Search** | Search everything at once, or paste a song, album, or playlist link from any service. |
+| **Queue** | Drag to reorder. Shuffle, repeat, and autoplay are in the player bar. |
+| **Playlists** | Click the heart to like a song, click `+` to add it to a playlist, or drag songs onto a playlist in the sidebar. |
 
-## AI Agent
+**Keyboard shortcuts:** `Space` play/pause · `Ctrl+←` / `Ctrl+→` previous/next · `Shift+←` / `Shift+→` skip back or
+ahead 10 seconds · `Ctrl+K` or `/` search · `Ctrl+J` AI agent
 
-### Agent panel (`Ctrl+J`)
+## Ask an AI agent
 
-Open the ✦ panel in the player bar to chat with an AI agent that can search, play, queue, like, and build playlists directly in Maestro:
+Click **✦** in the player bar (or press `Ctrl+J`) to open a chat next to the player. Ask for things like *"play some
+Daft Punk"*, *"queue the rest of this album"*, or *"save my queue as a playlist called Road trip"*, and watch it
+happen.
 
-- **Use your own sign-in, no API keys.** Supports **Claude**, **Codex**, **Cursor**, **Antigravity**, **OpenCode**, **Gemini CLI**, **GitHub Copilot**, and more via the [ACP registry](https://agentclientprotocol.com). Uninstalled agents show an **Install** button instead of downloading automatically.
-- **Switch agents mid-conversation.** Conversation context carries over when you switch between agents.
-- **Configurable access levels.** Choose **Minimal** (Maestro tools only), **Recommended** (adds web search, sub-agents, and images), **Full access**, or **Custom** right in the panel or in Settings.
+- **Use the AI plan you already pay for.** Claude, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Antigravity,
+  and more, all on your existing sign-in. One click on **Install** sets up any agent.
+- **You decide what it can touch.** Out of the box, the agent controls Maestro and searches the web. Your files and
+  programs stay off-limits until you open them up.
 
-### Connect external agents (MCP)
+Already use Claude Code, Cursor, or another AI app? Connect it to Maestro too:
+see [Connect other AI apps](docs/technical.md#connect-other-ai-apps-mcp).
 
-Maestro includes a built-in [MCP](https://modelcontextprotocol.io) server so external agents can control it too:
+## How it compares
 
-```powershell
-claude mcp add maestro -- maestro mcp
-codex mcp add maestro -- maestro mcp
-```
+| | Maestro | Soundiiz / SongShift | Nuclear | Spotube |
+|---|---|---|---|---|
+| **What it is** | Player for several services | Playlist transfer tool | Open-source player | Spotify-style app that streams from YouTube |
+| **Plays from several services** | **Spotify, YouTube, SoundCloud** | No (copies playlists only) | YouTube, SoundCloud | YouTube audio only |
+| **Plays real Spotify audio** | **Yes** | No | No | No |
+| **One queue across services** | **Yes** | No | Partly | No |
+| **Works with free Spotify** | **Yes** | Yes | — | Yes (needs a client ID) |
+| **Evens out volume across services** | **Yes** | — | Basic | Basic |
+| **No developer keys needed** | **Yes** | No | Yes | No |
 
-For Claude Desktop, Cursor, or other MCP apps:
+## FAQ
 
-```json
-{
-  "mcpServers": {
-    "maestro": { "command": "C:\\Users\\YOU\\AppData\\Local\\Programs\\Maestro\\Maestro.exe", "args": ["mcp"] }
-  }
-}
-```
+### Is Maestro free?
+Yes, for personal use. Businesses need a separate license (see [License](#license)).
 
-You can also run any tool from a terminal with `maestro agent` (run with no arguments to see available commands).
+### Do I need Spotify Premium?
+No. A free Spotify account works.
 
-## Notes & limitations
+### Do I need API keys or a developer account?
+No. Download it, open it, and search.
 
-- **Windows 10 / 11 (64-bit)** only for now.
-- **Spotify playback** requires the desktop installer from [spotify.com](https://www.spotify.com/download) (not the Microsoft Store version). YouTube and SoundCloud work without Spotify.
-- **SoundCloud Go+** exclusives and tracks that disable embedding may not play.
-- **Playlist imports** from Spotify and SoundCloud currently load up to 100 tracks.
+### Can I mix Spotify and YouTube songs in one playlist?
+Yes. Add songs from any of the three services to the same queue or playlist, and Maestro plays them in order.
+
+### Is Maestro ad-free?
+Yes. Maestro has no ads. Add [SpotX](https://github.com/SpotX-Official/SpotX) to your Spotify app to remove Spotify's
+ads as well.
+
+### Which systems does it run on?
+Windows 10 and 11.
+
+### How does it work?
+The [technical guide](docs/technical.md) explains how each service plays, how volume leveling works, and how to build
+Maestro yourself.
 
 ## License
 
-Licensed under [BUSL 1.1](LICENSE) — **free for personal, noncommercial use**, including building and modifying from source. Commercial/business use requires a separate license. Every release converts automatically to GPL-2.0-or-later four years after release.
+Maestro is free for personal, noncommercial use, including modifying it and building it yourself. Business use needs a
+separate license: [open an issue](https://github.com/QMjnh/maestro/issues) to get one.
 
-## Build from source
-
-Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
-
-```powershell
-dotnet run --project src\Maestro                 # run in debug mode
-dotnet publish src\Maestro -c Release -o dist    # build portable dist\Maestro.exe
-.\install.ps1 -ExePath dist\Maestro.exe          # install your local build
-```
+Maestro is source-available under the [Business Source License 1.1](LICENSE). Each release becomes open source
+(GPL-2.0-or-later) four years after it ships.
