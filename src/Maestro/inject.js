@@ -2,7 +2,7 @@
 // Defines window.__maestro once per page load, using the app's internal "platform" object
 // (found via React props) - the same object Spotify's own UI uses.
 
-if (!window.__maestro || window.__maestro.v !== 3) {
+if (!window.__maestro || window.__maestro.v !== 5) {
   const findPlatform = () => {
     const els = [document.getElementById('main'), ...document.querySelectorAll('body *')].filter(Boolean).slice(0, 200);
     for (const el of els) {
@@ -90,8 +90,39 @@ if (!window.__maestro || window.__maestro.v !== 3) {
     };
   };
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Whether the signed-in account can play a track, e.g. { playable: false, reason: 'COUNTRY_RESTRICTED' }.
+  const playability = async (uri) => {
+    const hash = await findHash('getTrack');
+    const res = await P.getGraphQLLoader()({ name: 'getTrack', operation: 'query', sha256Hash: hash, value: null }, { uri });
+    return (res && res.data && res.data.trackUnion && res.data.trackUnion.playability) || null;
+  };
+
+  // Spotify accepts a track it can't play (e.g. not available in this country) and silently plays
+  // nothing, so check, and throw for Maestro to skip it. A regional copy it plays instead is fine.
+  const start = async (uri) => {
+    const before = player.getState().item && player.getState().item.uri;
+    const check = playability(uri).catch(() => null);
+    await player.play({ uri }, {}, {});
+    const p = await check;
+    if (!p || p.playable !== false) return;
+    const started = () => {
+      const it = player.getState().item;
+      return it && (it.uri === uri || it.uri !== before);
+    };
+    for (let i = 0; i < 10 && !started(); i++) await sleep(150);
+    if (!started()) throw new Error('UNPLAYABLE ' + (p.reason || ''));
+  };
+
+  const reload = async (uri, ms) => {
+    await start(uri);
+    for (let i = 0; i < 30 && !player.getState().item; i++) await sleep(100);
+    if (ms > 0 && player.getState().item) await player.seekTo(ms);
+  };
+
   window.__maestro = {
-    v: 3,
+    v: 5,
     state() {
       const s = player.getState();
       const it = s.item;
@@ -109,12 +140,25 @@ if (!window.__maestro || window.__maestro.v !== 3) {
       };
     },
     async play(uri) {
-      await player.play({ uri }, {}, {});
+      await start(uri);
       return true;
     },
-    pause: () => player.pause().then(() => true),
-    resume: () => player.resume().then(() => true),
-    seek: (ms) => player.seekTo(ms).then(() => true),
+    // Spotify rejects these ("not_playing_track") once it has dropped the track, e.g. after another
+    // device took over playback. Nothing to pause then; resume and seek load the track again.
+    async pause() {
+      if (player.getState().item) await player.pause();
+      return true;
+    },
+    async resume(uri, ms) {
+      if (player.getState().item || !uri) await player.resume();
+      else await reload(uri, ms);
+      return true;
+    },
+    async seek(ms, uri) {
+      if (player.getState().item || !uri) await player.seekTo(ms);
+      else await reload(uri, ms);
+      return true;
+    },
     setVolume: (v) => Promise.resolve(playback.setVolume(v)).then(() => true),
     getVolume: () => playback.getVolume(),
     async search(q, limit) {
