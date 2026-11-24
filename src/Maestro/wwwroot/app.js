@@ -447,12 +447,27 @@ function spotifyStop() {
 }
 
 async function spotifyControl(action, extra = {}) {
+  const token = P.token;
   try {
     return await api('/api/spotify/control', { method: 'POST', body: { action, ...extra } });
   } catch (err) {
-    toast(err.message, { error: true });
+    // Resume and seek load the track again if Spotify dropped it, and find out then that it won't play.
+    if (err.code === 'UNPLAYABLE') {
+      if (token === P.token) skipSpotify(current(), err.message);
+    } else toast(err.message, { error: true });
     return null;
   }
+}
+
+function skipSpotify(item, why) {
+  spotifyStop();
+  toast(`Can't play “${item?.title || 'track'}” on Spotify (${why}) — skipping.`, { error: true, ms: 5000 });
+  P.loading = false;
+  P.playing = false;
+  setNote('');
+  renderPlayer();
+  const token = P.token;
+  setTimeout(() => token === P.token && next({ auto: true }), 600);
 }
 
 // Spotify's volume is steep (measured: 0.75 is -12.5 dB, about v^5), while YouTube's and SoundCloud's are linear.
@@ -473,6 +488,7 @@ async function spotifyStart(item, token) {
     } catch (err) {
       if (token !== P.token) return;
       if (err.code === 'NEEDS_RESTART' && attempt === 0 && (await restartSpotify())) continue;
+      if (err.code === 'UNPLAYABLE') return skipSpotify(item, err.message);
       P.loading = false;
       setNote(err.message);
       toast(err.message, { error: true, ms: 6000 });
@@ -480,7 +496,12 @@ async function spotifyStart(item, token) {
       return;
     }
   }
-  if (token !== P.token) return;
+  if (token !== P.token) {
+    // Maestro moved on while Spotify was still starting this track; stopEngine couldn't pause what
+    // hadn't started yet. A newer Spotify track replaces it by itself; anything else needs a pause.
+    if (P.engine !== 'spotify' || !P.loaded) spotifyControl('pause');
+    return;
+  }
   P.loading = false;
   setNote('');
   if (res.state) applySpotifyState(res.state, item);
@@ -517,6 +538,11 @@ async function spotifyPoll(token) {
       return;
     }
     const matches = applySpotifyState(s, item);
+    if (!s.uri && sp.sawMatch && P.playing) {
+      // Spotify dropped the track (another device took over, ...); pressing play loads it again.
+      P.playing = false;
+      setNote('Paused');
+    }
 
     if (!matches && sp.sawMatch && s.uri) {
       // Spotify moved on by itself (track finished, or user hit next in Spotify / media keys).
@@ -770,7 +796,9 @@ function togglePlay() {
     if (P.playing) ytp().pauseVideo();
     else ytp().playVideo();
   } else if (P.engine === 'spotify') {
-    spotifyControl(P.playing ? 'pause' : 'resume');
+    // Spotify never got as far as playing this track, so there's nothing to resume: start it again.
+    if (!P.playing && !P.loading && !sp.sawMatch) return playIndex(P.index);
+    spotifyControl(P.playing ? 'pause' : 'resume', { id: item.id, value: P.position });
     P.playing = !P.playing;
     sp.lastSync = performance.now();
     renderPlayer();
@@ -789,7 +817,7 @@ function seek(ms) {
   else if (P.engine === 'spotify') {
     clearTimeout(sp.endTimer);
     sp.endTimer = null;
-    spotifyControl('seek', { value: ms });
+    spotifyControl('seek', { value: ms, id: current().id });
   }
   renderProgress();
 }

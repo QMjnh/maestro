@@ -173,11 +173,14 @@ sealed class Api(SpotifyApp spotify, AgentChat chat)
             {
                 var b = Body();
                 var value = b?["value"] is JsonValue jv && jv.TryGetValue<double>(out var d) ? d : 0;
+                var id = b.Str("id") ?? "";
+                // The track to load again if Spotify has dropped it.
+                var uri = System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$") ? "spotify:track:" + id : null;
                 return b.Str("action") switch
                 {
                     "pause" => new { ok = await spotify.Call("pause") },
-                    "resume" => new { ok = await spotify.Call("resume") },
-                    "seek" => new { ok = await spotify.Call("seek", Math.Max(0, Math.Round(value))) },
+                    "resume" => new { ok = await spotify.Call("resume", uri, Math.Max(0, Math.Round(value))) },
+                    "seek" => new { ok = await spotify.Call("seek", Math.Max(0, Math.Round(value)), uri) },
                     "volume" => new { ok = await spotify.Call("setVolume", Math.Clamp(value, 0, 1)) },
                     _ => throw new BadRequest("Unknown action"),
                 };

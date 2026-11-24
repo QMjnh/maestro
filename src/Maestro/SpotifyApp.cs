@@ -165,6 +165,13 @@ sealed class SpotifyApp : IDisposable
             {
                 await Task.Delay(500);
             }
+            catch (Exception e) when (e.Message.StartsWith("UNPLAYABLE"))
+            {
+                var reason = e.Message["UNPLAYABLE".Length..].Trim();
+                throw new AppException("UNPLAYABLE", reason == "COUNTRY_RESTRICTED"
+                    ? "not available in your country"
+                    : reason.Length > 0 ? reason.ToLowerInvariant().Replace('_', ' ') : "not playable");
+            }
         }
     }
 
