@@ -31,6 +31,9 @@ Maestro is a .NET desktop app. Its UI is plain HTML/CSS/JS embedded in the exe a
 - **Volume leveling.** [normalizer.js](../src/Maestro/normalizer.js) runs inside the YouTube and SoundCloud frames,
   measures each track's loudness, and adjusts it to match Spotify's level. It's on by default and can be turned off
   in Settings.
+- **Media keys.** Maestro has one entry in Windows' media controls for all three services, and it takes the
+  keyboard's media keys (Play/Pause, Next, Previous) so the hidden Spotify never reacts to them. While another app
+  is the one playing (a video in your browser, say), the keys go to that app as usual.
 - **Home and autoplay** use Spotify song radio, YouTube Mix, and SoundCloud related tracks.
 - **Your data** (settings, playlists, and liked songs) is stored as JSON in `%APPDATA%\Maestro`.
 
@@ -163,6 +166,8 @@ src/Maestro/
   SoundCloud.cs         SoundCloud link parsing, search, related tracks
   Net.cs                shared HTTP helpers
   Store.cs              settings + playlists in %APPDATA%\Maestro
+  MediaControls.cs      Maestro's Windows media session (the media flyout card and its buttons), for all three services
+  MediaKeys.cs          hardware media keys, taken as hotkeys so the hidden Spotify never reacts to them
   NativeMethods.cs      Win32 calls (window hiding, single instance, dark title bar)
   wwwroot/              the player UI (plain HTML/CSS/JS), embedded in the exe; agent.js runs agents' tool calls,
                         chat.js is the Agent panel

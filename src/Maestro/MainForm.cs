@@ -23,19 +23,12 @@ sealed class MainForm : Form
     CoreWebView2Environment? env;
     YouTubePage? youTubePage;
     MediaControls? media;
+    MediaKeys? mediaKeys;
 
     public MainForm()
     {
         chat = new AgentChat(PostChat);
         api = new Api(spotify, chat);
-        spotify.OnMediaOverlaySuppressed = () =>
-        {
-            try
-            {
-                if (IsHandleCreated && !IsDisposed) BeginInvoke(() => media?.Refresh());
-            }
-            catch (InvalidOperationException) { }
-        };
         Text = "Maestro";
         using (var icoStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("maestro.ico"))
         {
@@ -49,7 +42,7 @@ sealed class MainForm : Form
         Controls.Add(youTubeHost);
         youTubeHost.SendToBack();
         Load += async (_, _) => await InitWebView();
-        FormClosing += (_, _) => { SavePlacement(); media?.Dispose(); chat.Dispose(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
+        FormClosing += (_, _) => { SavePlacement(); mediaKeys?.Dispose(); media?.Dispose(); chat.Dispose(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
         _ = spotify.Prewarm(Store.GetSettings().SpotifyExePath);
     }
 
@@ -59,7 +52,14 @@ sealed class MainForm : Form
         NativeMethods.UseDarkTitleBar(Handle);
         media?.Dispose();
         media = new MediaControls(Handle, OnMediaButton);
+        mediaKeys?.Dispose();
+        mediaKeys = new MediaKeys(Handle, OnMediaButton, IsOurMediaSession);
     }
+
+    /// <summary>Maestro's own Windows media session, or the background Spotify it drives (not one you opened yourself).</summary>
+    bool IsOurMediaSession(string app) =>
+        string.Equals(app, Path.GetFileName(Environment.ProcessPath), StringComparison.OrdinalIgnoreCase)
+        || (string.Equals(app, "Spotify.exe", StringComparison.OrdinalIgnoreCase) && !spotify.UserOwnsSpotify);
 
     // A second Maestro launch asks this window to come forward.
     protected override void WndProc(ref Message m)
@@ -71,6 +71,7 @@ sealed class MainForm : Form
             Activate();
             NativeMethods.SetForegroundWindow(Handle);
         }
+        else if (m.Msg == MediaKeys.WM_HOTKEY && mediaKeys?.OnHotKey((int)m.WParam) == true) return;
         base.WndProc(ref m);
     }
 

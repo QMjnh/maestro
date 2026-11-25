@@ -273,7 +273,7 @@ function onYouTubeState(e) {
     P.duration = yt.getDuration() * 1000 || P.duration;
     const item = current();
     if (item && !item.duration && P.duration) item.duration = Math.round(P.duration);
-    if (!wasPlaying) pauseSpotifyQuiet();
+    if (!wasPlaying) pauseSpotifyQuiet(); // e.g. started from the video's own play button
   } else if (e.data === YT_STATE.PAUSED) {
     P.playing = false;
   } else if (e.data === YT_STATE.ENDED) {
@@ -423,13 +423,11 @@ window.chrome?.webview?.addEventListener('message', (e) => {
     P.loading = true;
     P.playing = false;
   } else if (m.state === 'playing') {
-    const wasPlaying = P.playing;
     ytPage.started = true;
     P.playing = true;
     P.loading = false;
     P.duration = ytPage.duration * 1000 || P.duration;
     if (!item.duration && P.duration) item.duration = Math.round(P.duration);
-    if (!wasPlaying) pauseSpotifyQuiet();
   } else if (m.state === 'paused') {
     P.playing = false;
   } else if (m.state === 'ended' && ytPage.started && !ytPage.ended) {
@@ -498,7 +496,7 @@ async function spotifyStart(item, token) {
   let res;
   for (let attempt = 0; ; attempt++) {
     try {
-      res = await api('/api/spotify/play', { method: 'POST', body: { id: item.id, title: item.title, volume: spotifyVolume() } });
+      res = await api('/api/spotify/play', { method: 'POST', body: { id: item.id, volume: spotifyVolume() } });
       break;
     } catch (err) {
       if (token !== P.token) return;
@@ -628,10 +626,8 @@ function bindSoundCloudEvents() {
       sc.pause();
       return;
     }
-    const wasPlaying = P.playing;
     P.playing = true;
     P.loading = false;
-    if (!wasPlaying) pauseSpotifyQuiet();
     sc.getDuration((d) => {
       if (P.engine !== 'soundcloud') return;
       P.duration = d || P.duration;
@@ -848,6 +844,8 @@ function pausePlayback() {
     return;
   }
   if (!P.playing) return;
+  // Pausing means silence: also stop a background Spotify that something else started.
+  if (P.engine !== 'spotify') pauseSpotifyQuiet(true);
   if (P.engine === 'youtube') {
     ytp().pauseVideo();
   } else if (P.engine === 'spotify') {
@@ -2554,7 +2552,9 @@ function wire() {
   window.chrome?.webview?.addEventListener('message', (e) => {
     const cmd = e.data?.mediaCommand;
     if (!cmd) return;
-    if (cmd === 'play') {
+    if (cmd === 'toggle') {
+      togglePlay();
+    } else if (cmd === 'play') {
       if (!P.playing && !P.loading) togglePlay();
     } else if (cmd === 'pause' || cmd === 'stop') {
       if (P.playing || P.loading) pausePlayback();

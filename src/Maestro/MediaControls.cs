@@ -157,15 +157,6 @@ sealed unsafe class MediaControls : IDisposable
         }
     }
 
-    /// <summary>Re-assert our active playback status (e.g. right after background Spotify's SMTC is suppressed).</summary>
-    public void Refresh()
-    {
-        if (disposed || smtc == IntPtr.Zero || !lastEnabled) return;
-        PutBool(11, true);
-        PutStatus(lastStatus);
-        ((delegate* unmanaged[Stdcall]<IntPtr, int>)Vtbl(updater)[17])(updater); // Update
-    }
-
     void PutStatus(int status) => ((delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vtbl(smtc)[7])(smtc, status);
     void PutBool(int slot, bool value) => ((delegate* unmanaged[Stdcall]<IntPtr, byte, int>)Vtbl(smtc)[slot])(smtc, value ? (byte)1 : (byte)0);
 

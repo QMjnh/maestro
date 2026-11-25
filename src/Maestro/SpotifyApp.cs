@@ -4,7 +4,6 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace Maestro;
@@ -53,7 +52,8 @@ sealed class SpotifyApp : IDisposable
 
     HashSet<uint>? knownRoots; // null until the first look
 
-    public Action? OnMediaOverlaySuppressed { get; set; }
+    /// <summary>You opened Spotify's window yourself, so it's yours: Maestro hands its media keys back.</summary>
+    public bool UserOwnsSpotify => userTookSpotify;
 
     public SpotifyApp()
     {
@@ -293,8 +293,9 @@ sealed class SpotifyApp : IDisposable
     }
 
     /// <summary>
-    /// Turn off Spotify's own Windows media-key overlay while Maestro drives it in the background,
-    /// so hardware media keys (Fn+F5 / Next / Prev) always go to Maestro instead of starting Spotify.
+    /// Take the background Spotify out of Windows' media controls while Maestro drives it, so the media
+    /// flyout shows one session (Maestro's) and its buttons never skip within Spotify. Media keys are
+    /// handled separately (MediaKeys.cs): with this off, Spotify listens for them through a shell hook.
     /// </summary>
     async Task SuppressMediaControls()
     {
@@ -307,7 +308,6 @@ sealed class SpotifyApp : IDisposable
             {
                 Store.SetRestoreSpotifyMediaOverlay(true);
                 await Call("setMediaOverlay", false);
-                OnMediaOverlaySuppressed?.Invoke();
             }
         }
         catch (Exception) { }
@@ -486,23 +486,25 @@ sealed class SpotifyApp : IDisposable
 
     // ---- serialized playback control ----------------------------------------------------------
 
-    public async Task<JsonObject> PlayTrack(string exePath, string uri, string? title, double? volume)
+    public async Task<JsonObject> PlayTrack(string exePath, string uri, double? volume)
     {
         var seq = Interlocked.Increment(ref playbackSeq);
         await Ensure(exePath);
         if (seq != Volatile.Read(ref playbackSeq)) return new JsonObject { ["ok"] = false, ["cancelled"] = true };
 
+        string? before;
         await playLock.WaitAsync();
         try
         {
             if (seq != Volatile.Read(ref playbackSeq)) return new JsonObject { ["ok"] = false, ["cancelled"] = true };
             if (volume.HasValue) await Call("setVolume", Math.Clamp(volume.Value, 0, 1));
+            before = (await Call("state")).Str("uri");
             await Call("play", uri);
             if (seq != Volatile.Read(ref playbackSeq)) return new JsonObject { ["ok"] = false, ["cancelled"] = true };
         }
         finally { playLock.Release(); }
 
-        return await WaitForTrack(uri, title, seq);
+        return await WaitForTrack(uri, before, seq);
     }
 
     public async Task<bool> Pause(bool quiet = false, bool onlyIfHidden = false)
@@ -557,23 +559,11 @@ sealed class SpotifyApp : IDisposable
         finally { playLock.Release(); }
     }
 
-    static string NormTitle(string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        var t = Regex.Replace(s.ToLowerInvariant(), @"\s+[-–]\s+.*$", "");
-        t = Regex.Replace(t, @"\s*[(\[].*?[)\]]", "");
-        t = t.Normalize(NormalizationForm.FormKD);
-        return Regex.Replace(t, @"[^\p{L}\p{N}]+", "");
-    }
-
-    static bool TitleMatches(string? a, string? b)
-    {
-        var x = NormTitle(a);
-        var y = NormTitle(b);
-        return x.Length > 0 && y.Length > 0 && (x == y || x.Contains(y, StringComparison.Ordinal) || y.Contains(x, StringComparison.Ordinal));
-    }
-
-    async Task<JsonObject> WaitForTrack(string uri, string? title, int seq, int timeoutMs = 6000)
+    /// <summary>
+    /// Wait until Spotify plays the track. In some regions it plays the same song under another ("relinked") URI,
+    /// so any track other than the one loaded before the play call counts; the UI checks which song it is.
+    /// </summary>
+    async Task<JsonObject> WaitForTrack(string uri, string? before, int seq, int timeoutMs = 6000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         JsonNode? state = null;
@@ -583,7 +573,8 @@ sealed class SpotifyApp : IDisposable
                 return new JsonObject { ["ok"] = false, ["cancelled"] = true };
             state = await Call("state");
             var playing = state?["playing"]?.GetValue<bool>() == true;
-            var matches = state.Str("uri") == uri || (!string.IsNullOrEmpty(title) && TitleMatches(state.Str("title"), title));
+            var now = state.Str("uri");
+            var matches = now == uri || (now != null && now != before);
             if (playing && matches)
                 return new JsonObject { ["ok"] = true, ["state"] = state?.DeepClone() };
             await Task.Delay(200);

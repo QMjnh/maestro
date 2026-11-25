@@ -163,7 +163,7 @@ sealed class Api(SpotifyApp spotify, AgentChat chat)
                 var id = b.Str("id") ?? "";
                 if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$")) throw new BadRequest("Bad track id");
                 double? vol = b?["volume"] is JsonValue v && v.TryGetValue<double>(out var vd) ? vd : null;
-                return await spotify.PlayTrack(settings.SpotifyExePath, "spotify:track:" + id, b.Str("title"), vol);
+                return await spotify.PlayTrack(settings.SpotifyExePath, "spotify:track:" + id, vol);
             }
 
             case ("POST", "/api/spotify/control"):
