@@ -22,11 +22,20 @@ sealed class MainForm : Form
     readonly AgentChat chat;
     CoreWebView2Environment? env;
     YouTubePage? youTubePage;
+    MediaControls? media;
 
     public MainForm()
     {
         chat = new AgentChat(PostChat);
         api = new Api(spotify, chat);
+        spotify.OnMediaOverlaySuppressed = () =>
+        {
+            try
+            {
+                if (IsHandleCreated && !IsDisposed) BeginInvoke(() => media?.Refresh());
+            }
+            catch (InvalidOperationException) { }
+        };
         Text = "Maestro";
         using (var icoStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("maestro.ico"))
         {
@@ -40,7 +49,7 @@ sealed class MainForm : Form
         Controls.Add(youTubeHost);
         youTubeHost.SendToBack();
         Load += async (_, _) => await InitWebView();
-        FormClosing += (_, _) => { SavePlacement(); chat.Dispose(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
+        FormClosing += (_, _) => { SavePlacement(); media?.Dispose(); chat.Dispose(); spotify.OnAppExit(); spotify.Dispose(); youTubePage?.Dispose(); };
         _ = spotify.Prewarm(Store.GetSettings().SpotifyExePath);
     }
 
@@ -48,6 +57,8 @@ sealed class MainForm : Form
     {
         base.OnHandleCreated(e);
         NativeMethods.UseDarkTitleBar(Handle);
+        media?.Dispose();
+        media = new MediaControls(Handle, OnMediaButton);
     }
 
     // A second Maestro launch asks this window to come forward.
@@ -67,7 +78,8 @@ sealed class MainForm : Form
     {
         var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Maestro", "WebView2");
         // Autoplay lets a YouTube or SoundCloud track start on its own when another engine hands over to it.
-        var options = new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required");
+        // Disable Chromium's own media-key handling so Maestro's native SMTC is the single session for all three sources.
+        var options = new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required --disable-features=HardwareMediaKeyHandling");
         env = await CoreWebView2Environment.CreateAsync(null, dataDir, options);
         await web.EnsureCoreWebView2Async(env);
 
@@ -97,11 +109,23 @@ sealed class MainForm : Form
         {
             if (!e.Source.StartsWith(Origin + "/") || JsonNode.Parse(e.WebMessageAsJson) is not JsonObject o) return;
             if (o["ytPage"] is JsonObject msg) _ = youTubePage.Handle(msg);
+            else if (o["media"] is JsonObject mediaState) media?.Update(mediaState);
             else agent.OnMessage(o);
         };
         agent.Start();
         await core.AddScriptToExecuteOnDocumentCreatedAsync(Program.Resource("normalizer.js"));
         core.Navigate(Origin + "/index.html");
+    }
+
+    /// <summary>Hardware media key / Windows media overlay button, from any thread.</summary>
+    void OnMediaButton(string action)
+    {
+        var json = new JsonObject { ["mediaCommand"] = action }.ToJsonString();
+        try
+        {
+            if (IsHandleCreated && !IsDisposed) BeginInvoke(() => web.CoreWebView2?.PostWebMessageAsJson(json));
+        }
+        catch (InvalidOperationException) { } // closing
     }
 
     /// <summary>An event for the Agent panel, from any thread.</summary>

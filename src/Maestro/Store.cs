@@ -49,6 +49,8 @@ static class Store
         public string AgentAccess { get; set; } = "recommended";
         /// <summary>The capabilities picked for the custom level.</summary>
         public List<string> AgentCustom { get; set; } = ["web", "subagents", "images"];
+        /// <summary>Internal: Maestro turned off Spotify's own Windows media overlay while running, so restore it on exit.</summary>
+        public bool RestoreSpotifyMediaOverlay { get; set; }
     }
 
     public sealed record WindowPlacement(int X, int Y, int Width, int Height, bool Maximized);
@@ -94,6 +96,17 @@ static class Store
             SaveSettings(s);
         }
         return PublicSettings();
+    }
+
+    public static void SetRestoreSpotifyMediaOverlay(bool value)
+    {
+        lock (Gate)
+        {
+            var s = GetSettings();
+            if (s.RestoreSpotifyMediaOverlay == value) return;
+            s.RestoreSpotifyMediaOverlay = value;
+            SaveSettings(s);
+        }
     }
 
     // ---- playlists -----------------------------------------------------------

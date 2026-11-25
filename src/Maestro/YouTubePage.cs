@@ -13,17 +13,25 @@ sealed class YouTubePage(CoreWebView2Environment env, Control parent, CoreWebVie
 {
     CoreWebView2Controller? controller;
     Task? starting;
+    int seq;
+    string? activeVideoId;
 
     public async Task Handle(JsonNode msg)
     {
         var cmd = msg.Str("cmd");
         if (cmd == "load" && YouTube.ParseUrl("https://youtu.be/" + msg.Str("id")) is { Kind: YouTube.Kind.Video } v)
         {
+            var mySeq = ++seq;
+            activeVideoId = v.Id;
             await (starting ??= Start());
+            // Stopped or superseded while the hidden browser was still starting up.
+            if (mySeq != seq) return;
             controller!.CoreWebView2.Navigate("https://www.youtube.com/watch?v=" + v.Id);
         }
         else if (cmd == "stop")
         {
+            seq++;
+            activeVideoId = null;
             controller?.CoreWebView2.Navigate("about:blank");
         }
         else
@@ -41,7 +49,13 @@ sealed class YouTubePage(CoreWebView2Environment env, Control parent, CoreWebVie
         var cookies = core.CookieManager;
         cookies.AddOrUpdateCookie(cookies.CreateCookie("SOCS", "CAI", ".youtube.com", "/")); // skip the EU consent wall
         core.NewWindowRequested += (_, e) => e.Handled = true;
-        core.NavigationStarting += (_, e) => e.Cancel = e.Uri != "about:blank" && !IsYouTube(e.Uri);
+        core.NavigationStarting += (_, e) =>
+        {
+            if (e.Uri == "about:blank") return;
+            if (!IsYouTube(e.Uri)) { e.Cancel = true; return; }
+            if (YouTube.ParseUrl(e.Uri) is { Kind: YouTube.Kind.Video } v && (activeVideoId == null || v.Id != activeVideoId))
+                e.Cancel = true;
+        };
         core.WebMessageReceived += (_, e) =>
         {
             if (!IsYouTube(e.Source)) return;
