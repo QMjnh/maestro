@@ -162,11 +162,8 @@ sealed class Api(SpotifyApp spotify, AgentChat chat)
                 var b = Body();
                 var id = b.Str("id") ?? "";
                 if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$")) throw new BadRequest("Bad track id");
-                await spotify.Ensure(settings.SpotifyExePath);
-                if (b?["volume"] is JsonValue v && v.TryGetValue<double>(out var vol)) await spotify.Call("setVolume", Math.Clamp(vol, 0, 1));
-                var uri = "spotify:track:" + id;
-                await spotify.Call("play", uri);
-                return await spotify.WaitForTrack(uri);
+                double? vol = b?["volume"] is JsonValue v && v.TryGetValue<double>(out var vd) ? vd : null;
+                return await spotify.PlayTrack(settings.SpotifyExePath, "spotify:track:" + id, vol);
             }
 
             case ("POST", "/api/spotify/control"):
@@ -176,11 +173,13 @@ sealed class Api(SpotifyApp spotify, AgentChat chat)
                 var id = b.Str("id") ?? "";
                 // The track to load again if Spotify has dropped it.
                 var uri = System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$") ? "spotify:track:" + id : null;
+                var quiet = b?["quiet"]?.GetValue<bool>() == true;
+                var onlyIfHidden = b?["onlyIfHidden"]?.GetValue<bool>() == true;
                 return b.Str("action") switch
                 {
-                    "pause" => new { ok = await spotify.Call("pause") },
-                    "resume" => new { ok = await spotify.Call("resume", uri, Math.Max(0, Math.Round(value))) },
-                    "seek" => new { ok = await spotify.Call("seek", Math.Max(0, Math.Round(value)), uri) },
+                    "pause" => new { ok = await spotify.Pause(quiet, onlyIfHidden) },
+                    "resume" => new { ok = await spotify.Resume(uri, value) },
+                    "seek" => new { ok = await spotify.Seek(value, uri) },
                     "volume" => new { ok = await spotify.Call("setVolume", Math.Clamp(value, 0, 1)) },
                     _ => throw new BadRequest("Unknown action"),
                 };

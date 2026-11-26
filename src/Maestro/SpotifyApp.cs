@@ -36,6 +36,8 @@ sealed class SpotifyApp : IDisposable
 
     readonly SemaphoreSlim connectLock = new(1, 1);
     readonly SemaphoreSlim startLock = new(1, 1);
+    readonly SemaphoreSlim playLock = new(1, 1);
+    readonly SemaphoreSlim mediaOverlayLock = new(1, 1);
     Connection? conn;
     readonly System.Threading.Timer hideTimer;
     // Spotify processes Maestro launched. A Spotify you start yourself is never hidden or closed.
@@ -44,8 +46,14 @@ sealed class SpotifyApp : IDisposable
     // window is yours: open Spotify from the Start menu and it stays open.
     DateTime hideUntil = DateTime.MinValue;
     volatile bool showingForLogin; // pause hiding while the user logs in
+    volatile bool userTookSpotify; // user opened Spotify's window themselves; give media keys back
+    volatile bool exiting;
+    int playbackSeq; // bumps on play/pause/resume/seek so stale async starts abort instead of racing
 
     HashSet<uint>? knownRoots; // null until the first look
+
+    /// <summary>You opened Spotify's window yourself, so it's yours: Maestro hands its media keys back.</summary>
+    public bool UserOwnsSpotify => userTookSpotify;
 
     public SpotifyApp()
     {
@@ -92,7 +100,9 @@ sealed class SpotifyApp : IDisposable
             var c = new Connection(ws);
             _ = Task.Run(() => ReceiveLoop(c));
             showingForLogin = false;
-            return conn = c;
+            conn = c;
+            if (!userTookSpotify) _ = Task.Run(SuppressMediaControls);
+            return c;
         }
         finally { connectLock.Release(); }
     }
@@ -273,12 +283,53 @@ sealed class SpotifyApp : IDisposable
     public async Task Restart(string exePath)
     {
         conn?.Ws.Abort();
+        userTookSpotify = false;
         KillAll();
         for (int i = 0; i < 40 && IsRunning(); i++) await Task.Delay(250);
         await startLock.WaitAsync();
         try { await Start(exePath); }
         finally { startLock.Release(); }
         if (await Connect() == null) throw new AppException("NOT_CONNECTED", "Could not connect to Spotify.");
+    }
+
+    /// <summary>
+    /// Take the background Spotify out of Windows' media controls while Maestro drives it, so the media
+    /// flyout shows one session (Maestro's) and its buttons never skip within Spotify. Media keys are
+    /// handled separately (MediaKeys.cs): with this off, Spotify listens for them through a shell hook.
+    /// </summary>
+    async Task SuppressMediaControls()
+    {
+        await mediaOverlayLock.WaitAsync();
+        try
+        {
+            if (exiting || userTookSpotify) return;
+            var cur = await Call("getMediaOverlay");
+            if (cur is JsonValue v && v.TryGetValue<bool>(out var enabled) && enabled)
+            {
+                Store.SetRestoreSpotifyMediaOverlay(true);
+                await Call("setMediaOverlay", false);
+            }
+        }
+        catch (Exception) { }
+        finally { mediaOverlayLock.Release(); }
+    }
+
+    async Task RestoreMediaControls(bool waitForFlush = false)
+    {
+        await mediaOverlayLock.WaitAsync();
+        try
+        {
+            if (!Store.GetSettings().RestoreSpotifyMediaOverlay) return;
+            if (conn?.Open != true && await Connect() == null) return;
+            var ok = await Call("setMediaOverlay", true);
+            if (ok is JsonValue v && v.TryGetValue<bool>(out var restored) && restored)
+            {
+                Store.SetRestoreSpotifyMediaOverlay(false);
+                if (waitForFlush) await Task.Delay(200);
+            }
+        }
+        catch (Exception) { }
+        finally { mediaOverlayLock.Release(); }
     }
 
     static void KillAll()
@@ -292,17 +343,27 @@ sealed class SpotifyApp : IDisposable
     }
 
     /// <summary>
-    /// On Maestro exit: quit Spotify if Maestro started it, it's still in the background, and the
-    /// user wants that. If you opened its window, you're using it, so it stays. A Spotify that stays
-    /// gets its window back (minimized) so it's never left running invisibly.
+    /// On Maestro exit: restore Spotify's media-key overlay if Maestro turned it off, then quit Spotify
+    /// if Maestro started it, it's still in the background, and the user wants that. If you opened its
+    /// window, you're using it, so it stays. A Spotify that stays gets its window back (minimized) so
+    /// it's never left running invisibly.
     /// </summary>
     public void OnAppExit()
     {
+        exiting = true;
         hideTimer.Change(Timeout.Infinite, Timeout.Infinite);
         var pids = Pids();
-        if (!StartedByUs(pids)) return;
-        var inUse = NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count > 0;
-        if (!inUse && Store.GetSettings().CloseSpotifyOnExit)
+        var startedByUs = StartedByUs(pids);
+        var inUse = startedByUs && NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count > 0;
+        var willKill = startedByUs && !inUse && Store.GetSettings().CloseSpotifyOnExit;
+
+        if (Store.GetSettings().RestoreSpotifyMediaOverlay)
+        {
+            try { Task.Run(() => RestoreMediaControls(waitForFlush: willKill)).Wait(1500); } catch (AggregateException) { }
+        }
+
+        if (!startedByUs) return;
+        if (willKill)
         {
             // Off the UI thread: Call's continuations would otherwise wait for the (blocked) UI thread.
             try { Task.Run(() => Call("pause")).Wait(800); } catch (AggregateException) { }
@@ -343,9 +404,12 @@ sealed class SpotifyApp : IDisposable
         }
         if (!launched) return;
         var pids = Pids();
-        var hidden = NativeMethods.MainWindowsOf(pids, onlyVisible: false).Count > NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count;        if (!hidden) return;
+        var hidden = NativeMethods.MainWindowsOf(pids, onlyVisible: false).Count > NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count;
+        if (!hidden) return;
         ourPids = [];
+        userTookSpotify = true;
         RevealWindows();
+        _ = Task.Run(() => RestoreMediaControls());
     }
 
     void HideWindowIfWanted()
@@ -420,15 +484,99 @@ sealed class SpotifyApp : IDisposable
         };
     }
 
-    public async Task<JsonObject> WaitForTrack(string uri, int timeoutMs = 6000)
+    // ---- serialized playback control ----------------------------------------------------------
+
+    public async Task<JsonObject> PlayTrack(string exePath, string uri, double? volume)
+    {
+        var seq = Interlocked.Increment(ref playbackSeq);
+        await Ensure(exePath);
+        if (seq != Volatile.Read(ref playbackSeq)) return new JsonObject { ["ok"] = false, ["cancelled"] = true };
+
+        string? before;
+        await playLock.WaitAsync();
+        try
+        {
+            if (seq != Volatile.Read(ref playbackSeq)) return new JsonObject { ["ok"] = false, ["cancelled"] = true };
+            if (volume.HasValue) await Call("setVolume", Math.Clamp(volume.Value, 0, 1));
+            before = (await Call("state")).Str("uri");
+            await Call("play", uri);
+            if (seq != Volatile.Read(ref playbackSeq)) return new JsonObject { ["ok"] = false, ["cancelled"] = true };
+        }
+        finally { playLock.Release(); }
+
+        return await WaitForTrack(uri, before, seq);
+    }
+
+    public async Task<bool> Pause(bool quiet = false, bool onlyIfHidden = false)
+    {
+        if (onlyIfHidden)
+        {
+            if (userTookSpotify) return false;
+            var pids = Pids();
+            if (pids.Count == 0 || NativeMethods.MainWindowsOf(pids, onlyVisible: true).Count > 0) return false;
+        }
+        Interlocked.Increment(ref playbackSeq);
+        if (quiet && conn?.Open != true && !IsRunning()) return false;
+
+        await playLock.WaitAsync();
+        try
+        {
+            if (quiet)
+            {
+                if (await Connect() == null) return false;
+                try { await Call("pause"); return true; }
+                catch (AppException e) when (e.Code == "NOT_CONNECTED") { return false; }
+            }
+            await Call("pause");
+            return true;
+        }
+        finally { playLock.Release(); }
+    }
+
+    public async Task<bool> Resume(string? uri, double ms)
+    {
+        var seq = Interlocked.Increment(ref playbackSeq);
+        await playLock.WaitAsync();
+        try
+        {
+            if (seq != Volatile.Read(ref playbackSeq)) return false;
+            await Call("resume", uri, Math.Max(0, Math.Round(ms)));
+            return true;
+        }
+        finally { playLock.Release(); }
+    }
+
+    public async Task<bool> Seek(double ms, string? uri)
+    {
+        var seq = Interlocked.Increment(ref playbackSeq);
+        await playLock.WaitAsync();
+        try
+        {
+            if (seq != Volatile.Read(ref playbackSeq)) return false;
+            await Call("seek", Math.Max(0, Math.Round(ms)), uri);
+            return true;
+        }
+        finally { playLock.Release(); }
+    }
+
+    /// <summary>
+    /// Wait until Spotify plays the track. In some regions it plays the same song under another ("relinked") URI,
+    /// so any track other than the one loaded before the play call counts; the UI checks which song it is.
+    /// </summary>
+    async Task<JsonObject> WaitForTrack(string uri, string? before, int seq, int timeoutMs = 6000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         JsonNode? state = null;
         while (DateTime.UtcNow < deadline)
         {
+            if (seq != Volatile.Read(ref playbackSeq))
+                return new JsonObject { ["ok"] = false, ["cancelled"] = true };
             state = await Call("state");
-            if (state.Str("uri") == uri && state?["playing"]?.GetValue<bool>() == true)
-                return new JsonObject { ["ok"] = true, ["state"] = state.DeepClone() };
+            var playing = state?["playing"]?.GetValue<bool>() == true;
+            var now = state.Str("uri");
+            var matches = now == uri || (now != null && now != before);
+            if (playing && matches)
+                return new JsonObject { ["ok"] = true, ["state"] = state?.DeepClone() };
             await Task.Delay(200);
         }
         return new JsonObject { ["ok"] = false, ["state"] = state?.DeepClone() };

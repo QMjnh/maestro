@@ -250,7 +250,7 @@ const agentTools = {
     if (!P.queue.length) agentFail('The queue is empty. Use play to start something.');
     if (action === 'next') next();
     else if (action === 'previous') prev();
-    else if (action === 'toggle' || (action === 'play' && !P.playing && !P.loading) || (action === 'pause' && P.playing)) togglePlay();
+    else if (action === 'toggle' || (action === 'play' && !P.playing && !P.loading) || (action === 'pause' && (P.playing || P.loading))) togglePlay();
     return agentSettle();
   },
 

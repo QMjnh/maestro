@@ -2,7 +2,7 @@
 // Defines window.__maestro once per page load, using the app's internal "platform" object
 // (found via React props) - the same object Spotify's own UI uses.
 
-if (!window.__maestro || window.__maestro.v !== 5) {
+if (!window.__maestro || window.__maestro.v !== 6) {
   const findPlatform = () => {
     const els = [document.getElementById('main'), ...document.querySelectorAll('body *')].filter(Boolean).slice(0, 200);
     for (const el of els) {
@@ -35,6 +35,7 @@ if (!window.__maestro || window.__maestro.v !== 5) {
   const playback = get('PlaybackAPI');
   const playlists = get('PlaylistAPI');
   const tokens = get('TokenProvider');
+  const settings = get('SettingsAPI');
   if (!player || !playback) throw new Error('MAESTRO_NOT_READY');
 
   // GraphQL query hashes change between Spotify versions; read them from the app's own code.
@@ -122,7 +123,7 @@ if (!window.__maestro || window.__maestro.v !== 5) {
   };
 
   window.__maestro = {
-    v: 5,
+    v: 6,
     state() {
       const s = player.getState();
       const it = s.item;
@@ -146,7 +147,18 @@ if (!window.__maestro || window.__maestro.v !== 5) {
     // Spotify rejects these ("not_playing_track") once it has dropped the track, e.g. after another
     // device took over playback. Nothing to pause then; resume and seek load the track again.
     async pause() {
-      if (player.getState().item) await player.pause();
+      const s = player.getState();
+      if (s.item && !s.isPaused) await player.pause();
+      return true;
+    },
+    async getMediaOverlay() {
+      const opt = settings && settings.display && settings.display.nativeOverlayOnMediaKeys;
+      return opt && opt.getValue ? !!(await opt.getValue()) : null;
+    },
+    async setMediaOverlay(enabled) {
+      const opt = settings && settings.display && settings.display.nativeOverlayOnMediaKeys;
+      if (!opt || !opt.setValue) return false;
+      await opt.setValue(!!enabled);
       return true;
     },
     async resume(uri, ms) {

@@ -262,13 +262,18 @@ function loadYouTube() {
 }
 
 function onYouTubeState(e) {
-  if (P.engine !== 'youtube' || ytPage.active) return;
+  if (P.engine !== 'youtube' || ytPage.active || !P.loaded) {
+    if (e.data === YT_STATE.PLAYING) yt?.stopVideo?.();
+    return;
+  }
   if (e.data === YT_STATE.PLAYING) {
+    const wasPlaying = P.playing;
     P.playing = true;
     P.loading = false;
     P.duration = yt.getDuration() * 1000 || P.duration;
     const item = current();
     if (item && !item.duration && P.duration) item.duration = Math.round(P.duration);
+    if (!wasPlaying) pauseSpotifyQuiet(); // e.g. started from the video's own play button
   } else if (e.data === YT_STATE.PAUSED) {
     P.playing = false;
   } else if (e.data === YT_STATE.ENDED) {
@@ -283,7 +288,8 @@ function skipYouTube(item, why) {
   P.loading = false;
   P.playing = false;
   renderPlayer();
-  setTimeout(() => next({ auto: true }), 600);
+  const token = P.token;
+  setTimeout(() => token === P.token && next({ auto: true }), 600);
 }
 
 // When a video won't play in the embedded player: another upload of the same recording that will, then (if the owner
@@ -397,7 +403,10 @@ window.chrome?.webview?.addEventListener('message', (e) => {
   if (m.maestroNormalizer === 'ready') return syncNormalizer({ newTrack: current()?.id });
   if (m.hello) return ytPage.sendVolume();
   const item = current();
-  if (!ytPage.active || P.engine !== 'youtube' || m.id !== ytPage.id || item?.id !== m.id) return; // a page left over from an earlier track
+  if (!ytPage.active || P.engine !== 'youtube' || m.id !== ytPage.id || item?.id !== m.id) {
+    if (m.state === 'playing' || m.state === 'ad') ytPage.send({ cmd: 'stop' });
+    return; // a page left over from an earlier track
+  }
   if (m.error) {
     ytPage.started = true; // no timeout toast as well
     ytPage.stop();
@@ -444,6 +453,10 @@ function spotifyStop() {
   clearTimeout(sp.pollTimer);
   clearTimeout(sp.endTimer);
   sp.pollTimer = sp.endTimer = null;
+}
+
+function pauseSpotifyQuiet(onlyIfHidden = false) {
+  api('/api/spotify/control', { method: 'POST', body: { action: 'pause', quiet: true, onlyIfHidden } }).catch(() => {});
 }
 
 async function spotifyControl(action, extra = {}) {
@@ -499,9 +512,10 @@ async function spotifyStart(item, token) {
   if (token !== P.token) {
     // Maestro moved on while Spotify was still starting this track; stopEngine couldn't pause what
     // hadn't started yet. A newer Spotify track replaces it by itself; anything else needs a pause.
-    if (P.engine !== 'spotify' || !P.loaded) spotifyControl('pause');
+    if (P.engine !== 'spotify' || !P.loaded) pauseSpotifyQuiet();
     return;
   }
+  if (res.cancelled) return;
   P.loading = false;
   setNote('');
   if (res.state) applySpotifyState(res.state, item);
@@ -577,6 +591,7 @@ async function spotifyPoll(token) {
 
 let sc = null;
 let scApi = null;
+let scReady = null;
 let scBound = false;
 
 function loadSoundCloud() {
@@ -607,7 +622,10 @@ function bindSoundCloudEvents() {
   if (scBound) return;
   scBound = true;
   sc.bind(SC.Widget.Events.PLAY, () => {
-    if (P.engine !== 'soundcloud') return;
+    if (P.engine !== 'soundcloud' || !P.loaded) {
+      sc.pause();
+      return;
+    }
     P.playing = true;
     P.loading = false;
     sc.getDuration((d) => {
@@ -637,10 +655,12 @@ function bindSoundCloudEvents() {
     sc.bind(SC.Widget.Events.ERROR, () => {
       if (P.engine !== 'soundcloud') return;
       const item = current();
+      const token = P.token;
       toast(`Can't play “${item?.title || 'track'}” on SoundCloud — skipping.`, { error: true, ms: 5000 });
       P.loading = false;
       P.playing = false;
-      setTimeout(() => next({ auto: true }), 600);
+      renderPlayer();
+      setTimeout(() => token === P.token && next({ auto: true }), 600);
     });
   }
 }
@@ -663,14 +683,26 @@ async function soundCloudStart(item, token, autoplay) {
     iframe.src = widgetUrl(item.id, autoplay);
     sc = SC.Widget(iframe);
     bindSoundCloudEvents();
-    await new Promise((resolve) => sc.bind(SC.Widget.Events.READY, resolve));
-    if (token !== P.token) return;
+    scReady = new Promise((resolve) => sc.bind(SC.Widget.Events.READY, resolve));
+    await scReady;
+    if (token !== P.token) {
+      if (P.engine !== 'soundcloud' || !P.loaded) sc.pause();
+      return;
+    }
     sc.setVolume(P.muted ? 0 : P.volume);
   } else {
+    await scReady;
+    if (token !== P.token) {
+      if (P.engine !== 'soundcloud' || !P.loaded) sc.pause();
+      return;
+    }
     sc.load(url, {
       auto_play: autoplay,
       callback() {
-        if (token !== P.token) return;
+        if (token !== P.token) {
+          if (P.engine !== 'soundcloud' || !P.loaded) sc.pause();
+          return;
+        }
         sc.setVolume(P.muted ? 0 : P.volume);
       },
     });
@@ -705,15 +737,18 @@ window.addEventListener('message', (e) => {
 // Unified player
 // ===========================================================================
 
-function stopEngine(nextSource) {
-  if (P.engine === 'spotify') {
+function stopEngine(nextSource, { pauseSpotify = true } = {}) {
+  if (nextSource !== 'spotify') {
     spotifyStop();
-    // Only pause Spotify when switching away from it; Spotify→Spotify just swaps the URI.
-    if (nextSource !== 'spotify' && P.playing) spotifyControl('pause');
-  } else if (P.engine === 'youtube' && nextSource !== 'youtube') {
+    // Pause Spotify whenever starting or switching to another engine (or stopping), even if Maestro
+    // thought Spotify was already paused — it may have been playing in the background.
+    if (pauseSpotify || P.engine === 'spotify') pauseSpotifyQuiet();
+  }
+  if (nextSource !== 'youtube') {
     yt?.stopVideo?.();
     ytPage.stop();
-  } else if (P.engine === 'soundcloud' && sc && nextSource !== 'soundcloud') {
+  }
+  if (nextSource !== 'soundcloud' && sc) {
     sc.pause();
   }
 }
@@ -722,7 +757,7 @@ async function playIndex(i, { autoplay = true } = {}) {
   const item = P.queue[i];
   if (!item) return;
   const token = ++P.token;
-  stopEngine(item.source);
+  stopEngine(item.source, { pauseSpotify: autoplay });
   P.index = i;
   P.engine = item.source;
   P.loaded = autoplay;
@@ -740,7 +775,9 @@ async function playIndex(i, { autoplay = true } = {}) {
     if (token !== P.token) return;
     const fallback = ytFallback.get(item.id);
     if (fallback?.page) {
+      yt?.stopVideo?.();
       if (autoplay) ytPage.load(item, token);
+      else ytPage.stop();
     } else {
       ytPage.stop();
       P.loading = autoplay;
@@ -785,25 +822,65 @@ function prev() {
   playIndex(Math.max(0, P.index - 1));
 }
 
+function pausePlayback() {
+  const item = current();
+  if (!item) return;
+  if (P.loading) {
+    P.token++;
+    P.loading = false;
+    P.playing = false;
+    P.loaded = false;
+    if (P.engine === 'spotify') {
+      spotifyStop();
+      setNote('Paused');
+      pauseSpotifyQuiet();
+    } else if (P.engine === 'youtube') {
+      yt?.stopVideo?.();
+      ytPage.stop();
+    } else if (P.engine === 'soundcloud' && sc) {
+      sc.pause();
+    }
+    renderPlayer();
+    return;
+  }
+  if (!P.playing) return;
+  // Pausing means silence: also stop a background Spotify that something else started.
+  if (P.engine !== 'spotify') pauseSpotifyQuiet(true);
+  if (P.engine === 'youtube') {
+    ytp().pauseVideo();
+  } else if (P.engine === 'spotify') {
+    spotifyControl('pause', { id: item.id, value: P.position });
+    P.playing = false;
+    sp.lastSync = performance.now();
+    setNote('Paused');
+    renderPlayer();
+  } else if (P.engine === 'soundcloud' && sc) {
+    sc.pause();
+  }
+}
+
 function togglePlay() {
   const item = current();
   if (!item) {
     if (P.queue.length) playIndex(0);
     return;
   }
+  if (P.playing || P.loading) return pausePlayback();
   if (!P.loaded) return playIndex(P.index);
   if (P.engine === 'youtube') {
-    if (P.playing) ytp().pauseVideo();
-    else ytp().playVideo();
+    stopEngine('youtube');
+    ytp().playVideo();
   } else if (P.engine === 'spotify') {
     // Spotify never got as far as playing this track, so there's nothing to resume: start it again.
-    if (!P.playing && !P.loading && !sp.sawMatch) return playIndex(P.index);
-    spotifyControl(P.playing ? 'pause' : 'resume', { id: item.id, value: P.position });
-    P.playing = !P.playing;
+    if (!sp.sawMatch) return playIndex(P.index);
+    stopEngine('spotify');
+    spotifyControl('resume', { id: item.id, value: P.position });
+    P.playing = true;
     sp.lastSync = performance.now();
     renderPlayer();
   } else if (P.engine === 'soundcloud' && sc) {
-    P.playing ? sc.pause() : sc.play();
+    stopEngine('soundcloud');
+    sc.play();
   }
 }
 
@@ -1252,7 +1329,19 @@ function renderPlayer() {
       ? '<div class="list-label">Finding recommendations…</div>'
       : '';
 
-  if (item && 'mediaSession' in navigator) {
+  if (window.chrome?.webview) {
+    window.chrome.webview.postMessage({
+      media: item
+        ? {
+            status: P.playing || P.loading ? 'playing' : 'paused',
+            title: item.title || '',
+            artist: item.artist || '',
+            art: item.art || '',
+            hasQueue: P.queue.length > 0,
+          }
+        : { status: 'closed', hasQueue: false },
+    });
+  } else if (item && 'mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: item.title,
       artist: item.artist,
@@ -2459,8 +2548,27 @@ function wire() {
     }
   });
 
-  // Hardware media keys while the YouTube side is playing in this window.
-  if ('mediaSession' in navigator) {
+  // Hardware media keys / Windows media overlay (MediaControls.cs), unified across all three sources.
+  window.chrome?.webview?.addEventListener('message', (e) => {
+    const cmd = e.data?.mediaCommand;
+    if (!cmd) return;
+    if (cmd === 'toggle') {
+      togglePlay();
+    } else if (cmd === 'play') {
+      if (!P.playing && !P.loading) togglePlay();
+    } else if (cmd === 'pause' || cmd === 'stop') {
+      if (P.playing || P.loading) pausePlayback();
+    } else if (cmd === 'next') {
+      next();
+    } else if (cmd === 'prev') {
+      prev();
+    }
+  });
+
+  // Fallback hardware media keys when running outside Maestro's WebView2 shell.
+  if (!window.chrome?.webview && 'mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', () => !P.playing && !P.loading && togglePlay());
+    navigator.mediaSession.setActionHandler('pause', () => (P.playing || P.loading) && pausePlayback());
     navigator.mediaSession.setActionHandler('nexttrack', () => next());
     navigator.mediaSession.setActionHandler('previoustrack', prev);
   }
@@ -2481,7 +2589,12 @@ function boot() {
   loadFavorites();
   loadPlaylists().then(() => loadHome());
   refreshStatus().then(paintHome);
-  setInterval(() => P.engine !== 'spotify' && refreshStatus(), 15000);
+  setInterval(() => {
+    if (P.engine !== 'spotify') {
+      refreshStatus();
+      if (P.playing) pauseSpotifyQuiet(true);
+    }
+  }, 15000);
   setInterval(() => {
     if (P.loaded && !dragging) renderProgress();
     countListen();
